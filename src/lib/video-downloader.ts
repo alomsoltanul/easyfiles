@@ -21,16 +21,37 @@ const DEFAULT_TIMEOUT = IS_VERCEL ? 8000 : 30000;     // 8s on Vercel
 const DOWNLOAD_TIMEOUT = IS_VERCEL ? 8000 : 120000;   // 8s on Vercel
 const MAX_FILE_SIZE_BYTES = 4.5 * 1024 * 1024;        // 4.5MB Vercel limit
 
-// Try to find ffmpeg-static binary
+// Try to find ffmpeg binary in multiple locations
 function getFfmpegPath(): string | undefined {
+  const candidates = [
+    // Location copied by prebuild script
+    join(process.cwd(), 'bin', 'ffmpeg'),
+    // ffmpeg-static package
+    join(process.cwd(), 'node_modules', 'ffmpeg-static', 'ffmpeg'),
+    // Lambda/Vercel runtime paths
+    '/var/task/bin/ffmpeg',
+    '/var/task/node_modules/ffmpeg-static/ffmpeg',
+    // System paths
+    'ffmpeg',
+  ];
+
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  // Last resort: try requiring ffmpeg-static dynamically
   try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const ffmpegStatic = require('ffmpeg-static');
     if (ffmpegStatic && existsSync(ffmpegStatic)) {
       return ffmpegStatic;
     }
   } catch {
-    // ffmpeg-static not installed or not available
+    // Not available
   }
+
   return undefined;
 }
 
