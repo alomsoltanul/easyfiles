@@ -246,12 +246,13 @@ export async function downloadToTempFile(
     flags.ffmpegLocation = ffmpegPath;
   }
 
-  if (format === 'audio') {
+    if (format === 'audio') {
     if (ffmpegPath) {
-      // Convert to MP3 using ffmpeg
+      // Convert to MP3 using ffmpeg at 128kbps to stay under Vercel's 4.5MB limit
+      // 128kbps = ~1MB per minute, so a 4-minute song fits
       flags.extractAudio = true;
       flags.audioFormat = 'mp3';
-      flags.audioQuality = 0; // Best
+      flags.audioQuality = 7; // ~100kbps VBR — keeps files under 4.5MB for most songs up to ~5min
       flags.preferFfmpeg = true;
     } else {
       // No ffmpeg: download best audio stream as-is
