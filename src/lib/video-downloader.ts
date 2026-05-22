@@ -5,8 +5,8 @@
  * - Strict URL validation before every call
  * - Timeout controls
  * - Controlled options (no arbitrary flags)
- * - Error sanitization
- * - Vercel/serverless compatibility
+ * - ffmpeg-static integration for MP3 conversion
+ * - Vercel serverless compatibility (10s timeout, 4.5MB response limit)
  */
 
 import youtubedl, { create } from 'youtube-dl-exec';
@@ -17,13 +17,25 @@ import { isAllowedUrl } from './video-security';
 
 // Vercel serverless functions have a ~10s timeout on Hobby plan
 const IS_VERCEL = process.env.VERCEL === '1';
-const DEFAULT_TIMEOUT = IS_VERCEL ? 10000 : 30000;
-const DOWNLOAD_TIMEOUT = IS_VERCEL ? 10000 : 120000;
-const MAX_FILE_SIZE_MB = 500;
+const DEFAULT_TIMEOUT = IS_VERCEL ? 8000 : 30000;     // 8s on Vercel
+const DOWNLOAD_TIMEOUT = IS_VERCEL ? 8000 : 120000;   // 8s on Vercel
+const MAX_FILE_SIZE_BYTES = 4.5 * 1024 * 1024;        // 4.5MB Vercel limit
+
+// Try to find ffmpeg-static binary
+function getFfmpegPath(): string | undefined {
+  try {
+    const ffmpegStatic = require('ffmpeg-static');
+    if (ffmpegStatic && existsSync(ffmpegStatic)) {
+      return ffmpegStatic;
+    }
+  } catch {
+    // ffmpeg-static not installed or not available
+  }
+  return undefined;
+}
 
 // Try to find the correct yt-dlp binary for the platform
 function getYtDlpBinaryPath(): string | undefined {
-  // Check common locations
   const candidates = [
     join(process.cwd(), 'node_modules', 'youtube-dl-exec', 'bin', 'yt-dlp_linux'),
     join(process.cwd(), 'node_modules', 'youtube-dl-exec', 'bin', 'yt-dlp'),
@@ -38,7 +50,6 @@ function getYtDlpBinaryPath(): string | undefined {
       return candidate;
     }
   }
-
   return undefined;
 }
 
@@ -48,7 +59,6 @@ function getYtDlp() {
   if (binaryPath) {
     return create(binaryPath);
   }
-  // Fallback to default (will use the one in PATH or node_modules)
   return youtubedl;
 }
 
@@ -76,6 +86,12 @@ export interface VideoInfo {
   audioExt?: string;
 }
 
+export interface DownloadOptions {
+  url: string;
+  format: 'video' | 'audio';
+  quality?: string;
+}
+
 export interface DownloadResult {
   filePath: string;
   fileName: string;
@@ -85,7 +101,6 @@ export interface DownloadResult {
 
 /**
  * Fetches video metadata securely.
- * Throws on invalid URLs, network errors, or extraction failures.
  */
 export async function getVideoInfo(url: string): Promise<VideoInfo> {
   if (!isAllowedUrl(url)) {
@@ -99,24 +114,21 @@ export async function getVideoInfo(url: string): Promise<VideoInfo> {
       dumpSingleJson: true,
       noWarnings: true,
       callHome: false,
-      maxFilesize: `${MAX_FILE_SIZE_MB}M`,
     } as any;
 
     const result = await ytDlp(url, flags, { timeout: DEFAULT_TIMEOUT });
-
     const info = result as unknown as Record<string, any>;
 
     if (!info || !info.id) {
       throw new Error('Failed to extract video information.');
     }
 
-    // Extract and sanitize formats
     const formats: VideoFormat[] = (info.formats || [])
       .filter((f: any) => {
         if (!f.url) return false;
         if (f.has_drm) return false;
         const ext = (f.ext || '').toLowerCase();
-        return ['mp4', 'webm', 'm4a', 'mp3'].includes(ext);
+        return ['mp4', 'webm', 'm4a', 'mp3', '3gp'].includes(ext);
       })
       .map((f: any) => ({
         formatId: String(f.format_id || 'unknown'),
@@ -128,7 +140,6 @@ export async function getVideoInfo(url: string): Promise<VideoInfo> {
         url: String(f.url),
       }));
 
-    // Find best video+audio combined stream
     const bestCombined = formats
       .filter((f) => f.hasVideo && f.hasAudio)
       .sort((a, b) => {
@@ -137,12 +148,9 @@ export async function getVideoInfo(url: string): Promise<VideoInfo> {
         return bRes - aRes;
       })[0];
 
-    // Find best audio-only stream
     const bestAudio = formats
       .filter((f) => f.hasAudio && !f.hasVideo)
-      .sort((a, b) => {
-        return (b.filesize || 0) - (a.filesize || 0);
-      })[0];
+      .sort((a, b) => (b.filesize || 0) - (a.filesize || 0))[0];
 
     const title = String(info.title || 'video')
       .replace(/[\x00-\x1f\x7f-\x9f]/g, '')
@@ -163,19 +171,6 @@ export async function getVideoInfo(url: string): Promise<VideoInfo> {
     };
   } catch (error: any) {
     const rawMessage = error?.message || 'Unknown error';
-    const rawStderr = error?.stderr || '';
-    const rawStdout = error?.stdout || '';
-    const rawCode = error?.exitCode ?? error?.code ?? 'N/A';
-
-    // Log raw error for diagnostics (never exposed to client)
-    console.error('yt-dlp raw error:', {
-      message: rawMessage,
-      stderr: rawStderr,
-      stdout: rawStdout?.slice(0, 500),
-      exitCode: rawCode,
-      binaryPath: getYtDlpBinaryPath() || 'default',
-    });
-
     if (rawMessage.includes('PRIVATE') || rawMessage.includes('SIGN IN') || rawMessage.includes('age')) {
       throw new Error('This video is private, age-restricted, or requires authentication.');
     }
@@ -185,10 +180,6 @@ export async function getVideoInfo(url: string): Promise<VideoInfo> {
     if (rawMessage.includes('Invalid or unsupported URL')) {
       throw error;
     }
-    if (rawMessage.includes('ENOENT') || rawMessage.includes('not found') || rawMessage.includes('spawn')) {
-      throw new Error('Video extraction binary is not available on this deployment.');
-    }
-    // Include the original error message in development for debugging
     if (process.env.NODE_ENV === 'development') {
       throw new Error(`Failed to fetch video information: ${rawMessage}`);
     }
@@ -198,20 +189,26 @@ export async function getVideoInfo(url: string): Promise<VideoInfo> {
 
 /**
  * Downloads video or audio to a temporary file.
- * Only allows controlled options - no arbitrary user input reaches the binary.
+ * Returns the file path, name, content type, and size.
+ * Throws if the file exceeds MAX_FILE_SIZE_BYTES or times out.
  */
-export async function downloadVideo(
+export async function downloadToTempFile(
   url: string,
   format: 'video' | 'audio',
   quality?: string
-): Promise<string> {
+): Promise<DownloadResult> {
   if (!isAllowedUrl(url)) {
     throw new Error('Invalid or unsupported URL.');
   }
 
   const tempDir = tmpdir();
   const safeId = `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
-  const outputExt = format === 'audio' ? 'mp3' : 'mp4';
+
+  // For audio with ffmpeg available: convert to mp3
+  // Otherwise keep native format (m4a/webm for audio, mp4 for video)
+  const ffmpegPath = getFfmpegPath();
+  const wantsMp3 = format === 'audio' && ffmpegPath;
+  const outputExt = wantsMp3 ? 'mp3' : (format === 'audio' ? 'm4a' : 'mp4');
   const outputPath = join(tempDir, `dl-${safeId}.${outputExt}`);
 
   const flags: any = {
@@ -219,60 +216,103 @@ export async function downloadVideo(
     noWarnings: true,
     callHome: false,
     restrictFilenames: true,
-    maxFilesize: `${MAX_FILE_SIZE_MB}M`,
+    // Skip if estimated file size is over limit
+    maxFilesize: `${Math.floor(MAX_FILE_SIZE_BYTES / (1024 * 1024))}M`,
   };
 
+  // Add ffmpeg location if available
+  if (ffmpegPath) {
+    flags.ffmpegLocation = ffmpegPath;
+  }
+
   if (format === 'audio') {
-    flags.extractAudio = true;
-    flags.audioFormat = 'mp3';
-    flags.audioQuality = 0;
-    flags.preferFfmpeg = true;
+    if (ffmpegPath) {
+      // Convert to MP3 using ffmpeg
+      flags.extractAudio = true;
+      flags.audioFormat = 'mp3';
+      flags.audioQuality = 0; // Best
+      flags.preferFfmpeg = true;
+    } else {
+      // No ffmpeg: download best audio stream as-is
+      flags.format = 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best';
+    }
   } else {
+    // Video: choose quality-based pre-merged format
     switch (quality) {
       case '1080p':
-        flags.format = 'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080][ext=mp4]/best';
+        flags.format = 'best[height<=1080][filesize<5M][ext=mp4]/best[height<=1080][ext=mp4]/best[ext=mp4]/best';
         break;
       case '720p':
-        flags.format = 'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/best';
+        flags.format = 'best[height<=720][filesize<5M][ext=mp4]/best[height<=720][ext=mp4]/best[ext=mp4]/best';
         break;
       case '480p':
-        flags.format = 'bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/best[height<=480][ext=mp4]/best';
+        flags.format = 'best[height<=480][filesize<5M][ext=mp4]/best[height<=480][ext=mp4]/best[ext=mp4]/best';
         break;
       case '360p':
-        flags.format = 'bestvideo[height<=360][ext=mp4]+bestaudio[ext=m4a]/best[height<=360][ext=mp4]/best';
+        flags.format = 'best[height<=360][filesize<5M][ext=mp4]/best[height<=360][ext=mp4]/best[ext=mp4]/best';
         break;
       default:
-        flags.format = 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best';
+        flags.format = 'best[filesize<5M][ext=mp4]/best[ext=mp4]/best';
     }
-    flags.mergeOutputFormat = 'mp4';
   }
 
   try {
     const ytDlp = getYtDlp();
     await ytDlp(url, flags, { timeout: DOWNLOAD_TIMEOUT });
-    return outputPath;
+
+    // Check if file was created
+    const { stat } = await import('fs/promises');
+    const stats = await stat(outputPath);
+
+    if (stats.size === 0) {
+      throw new Error('Downloaded file is empty.');
+    }
+
+    if (stats.size > MAX_FILE_SIZE_BYTES) {
+      // Clean up oversized file
+      try {
+        const { unlink } = await import('fs/promises');
+        await unlink(outputPath);
+      } catch {
+        // ignore
+      }
+      throw new Error('FILE_TOO_LARGE');
+    }
+
+    const contentType = wantsMp3 ? 'audio/mpeg' : format === 'audio' ? 'audio/mp4' : 'video/mp4';
+
+    return {
+      filePath: outputPath,
+      fileName: `download.${outputExt}`,
+      contentType,
+      fileSize: stats.size,
+    };
   } catch (error: any) {
+    // Cleanup on failure
     try {
       const { unlink } = await import('fs/promises');
       await unlink(outputPath);
     } catch {
-      // Ignore cleanup errors
+      // ignore cleanup errors
     }
 
     const message = error?.message || '';
+    if (message.includes('FILE_TOO_LARGE') || message.includes('max-filesize')) {
+      throw new Error('FILE_TOO_LARGE');
+    }
     if (message.includes('ffmpeg')) {
-      throw new Error('FFmpeg is required for audio conversion. Please install FFmpeg on the server.');
+      throw new Error('FFmpeg is required for audio conversion but was not found.');
     }
-    if (message.includes('max-filesize')) {
-      throw new Error('Video exceeds maximum file size limit.');
+    if (message.includes('timeout') || message.includes('Timed out')) {
+      throw new Error('TIMEOUT');
     }
-    throw new Error('Download failed. The video may be restricted or unavailable.');
+    throw new Error('Download failed. The video may be restricted, too large, or unavailable.');
   }
 }
 
 /**
- * Gets a direct download URL for a video without server-side processing.
- * Useful for serverless environments where downloading large files is not feasible.
+ * Gets a direct download URL for a video.
+ * Useful for large files where server-side proxying won't work.
  */
 export async function getDirectDownloadUrl(url: string, format: 'video' | 'audio'): Promise<string | null> {
   if (!isAllowedUrl(url)) {
@@ -294,7 +334,6 @@ export async function getDirectDownloadUrl(url: string, format: 'video' | 'audio
     }
 
     const result = await ytDlp(url, flags, { timeout: DEFAULT_TIMEOUT });
-
     const directUrl = typeof result === 'string' ? result.trim() : null;
 
     if (!directUrl || !directUrl.startsWith('http')) {

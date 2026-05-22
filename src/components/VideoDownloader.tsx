@@ -122,7 +122,7 @@ export default function VideoDownloader() {
 
     setIsDownloading(true);
     setError(null);
-    setStatusMessage('Getting download link...');
+    setStatusMessage('Preparing download...');
 
     try {
       const response = await fetch('/api/video/download', {
@@ -131,41 +131,71 @@ export default function VideoDownloader() {
         body: JSON.stringify({
           url: videoInfo.webpageUrl,
           format: downloadFormat,
+          quality: downloadFormat === 'video' ? videoQuality : undefined,
         }),
       });
 
+      // Check if the server returned a streamed file (success) or JSON fallback
+      const contentType = response.headers.get('content-type') || '';
+      const contentDisposition = response.headers.get('content-disposition');
+
+      if (response.ok && contentDisposition) {
+        // Server-side download succeeded — we got a file stream
+        setStatusMessage('Downloading file...');
+
+        const blob = await response.blob();
+        const blobUrl = URL.createObjectURL(blob);
+
+        // Extract filename from Content-Disposition header
+        const filenameMatch = contentDisposition.match(/filename="?([^"]+)"?/);
+        const filename = filenameMatch ? filenameMatch[1] : `download-${Date.now()}`;
+
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+
+        URL.revokeObjectURL(blobUrl);
+
+        setStatusMessage('Download complete!');
+        setTimeout(() => setStatusMessage(''), 3000);
+        return;
+      }
+
+      // Otherwise it's JSON (either direct URL fallback or error)
       const data = await response.json();
 
       if (!response.ok) {
         throw new Error(data.error || `Download failed (${response.status})`);
       }
 
-      if (!data.url) {
-        throw new Error('No download URL returned from server');
+      if (data.mode === 'direct' && data.url) {
+        // Direct URL fallback — open in new tab
+        setStatusMessage('Opening download link...');
+
+        const link = document.createElement('a');
+        link.href = data.url;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+
+        setStatusMessage('Download started! If it does not start automatically, check your popup blocker.');
+        setTimeout(() => setStatusMessage(''), 5000);
+        return;
       }
 
-      // Open the direct CDN URL in a new tab for download
-      // Cross-origin <a download> doesn't work, so window.open is the most reliable method
-      setStatusMessage('Opening download...');
-
-      // Create a temporary link and click it
-      const link = document.createElement('a');
-      link.href = data.url;
-      link.target = '_blank';
-      link.rel = 'noopener noreferrer';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-
-      setStatusMessage('Download started! Check your browser downloads.');
-      setTimeout(() => setStatusMessage(''), 4000);
+      throw new Error('Unexpected response from server');
     } catch (err: any) {
       setError(err.message || 'Download failed. Please try again.');
       setStatusMessage('');
     } finally {
       setIsDownloading(false);
     }
-  }, [videoInfo, downloadFormat]);
+  }, [videoInfo, downloadFormat, videoQuality]);
 
   const handlePaste = useCallback(async () => {
     try {
@@ -178,10 +208,6 @@ export default function VideoDownloader() {
 
   const platformIcon = PLATFORM_ICONS[platform] || PLATFORM_ICONS.unknown;
   const isValidUrl = url.trim().length > 0;
-
-  // Label text based on format
-  const formatLabel = downloadFormat === 'audio' ? 'Audio' : 'Video';
-  const formatExt = downloadFormat === 'audio' ? 'M4A/WebM' : 'MP4';
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -382,12 +408,12 @@ export default function VideoDownloader() {
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
                     </svg>
-                    Audio (M4A/WebM)
+                    Audio (MP3)
                   </button>
                 </div>
                 <p className="text-xs text-slate-400 mt-2">
                   {downloadFormat === 'audio'
-                    ? 'Audio is extracted as-is from the source. The file may be M4A or WebM format depending on the platform.'
+                    ? 'Short audio clips are converted to MP3. Longer files are provided as direct download links.'
                     : 'Video is downloaded in MP4 format when available.'
                   }
                 </p>
@@ -442,7 +468,7 @@ export default function VideoDownloader() {
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                       </svg>
-                      Download {formatLabel} ({formatExt})
+                      Download {downloadFormat === 'audio' ? 'MP3' : 'Video'}
                     </button>
                     <button
                       onClick={() => { setVideoInfo(null); setError(null); setStatusMessage(''); }}
