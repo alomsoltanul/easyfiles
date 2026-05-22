@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import AppHeader from "@/components/AppHeader";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -13,9 +14,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Image to WebP Converter — PNG, JPG, HEIC to WebP",
-  description: "Convert PNG, JPG, JPEG, and HEIC images to WebP format instantly in your browser. Free, private, and fast bulk image conversion with quality control.",
-  keywords: ["webp converter", "png to webp", "jpg to webp", "heic to webp", "image converter", "bulk image conversion"],
+  title: "ConvertTools — Image Converter & Video Downloader",
+  description: "Convert PNG, JPG, HEIC images to WebP and download videos from YouTube, Facebook, Instagram, and X. Free, private, and secure.",
+  keywords: ["webp converter", "png to webp", "jpg to webp", "heic to webp", "video downloader", "youtube downloader", "mp3 converter"],
 };
 
 export default function RootLayout({
@@ -29,6 +30,7 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} antialiased`}
     >
       <body className="min-h-screen bg-slate-50" suppressHydrationWarning>
+        <AppHeader />
         {children}
       </body>
     </html>
