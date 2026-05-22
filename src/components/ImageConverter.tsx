@@ -10,6 +10,7 @@ import {
 import UploadZone from './UploadZone';
 import CompressionSettings, { ResizePreset } from './CompressionSettings';
 import ConversionResults from './ConversionResults';
+import HeaderMenu from './HeaderMenu';
 
 type Mode = 'single' | 'bulk';
 
@@ -91,11 +92,22 @@ export default function ImageConverter() {
 
   const formatLabel = getFormatLabel(activeTab);
 
+  const handleDownloadAll = useCallback(() => {
+    if (!results) return;
+    results.forEach((result, index) => {
+      setTimeout(() => {
+        import('@/lib/converters').then(({ downloadImage }) => {
+          downloadImage(result.convertedBlob, result.fileName);
+        });
+      }, index * 200);
+    });
+  }, [results]);
+
   return (
     <div className="min-h-screen bg-slate-50">
       {/* Header */}
       <header className="bg-white border-b border-slate-200 sticky top-0 z-50">
-        <div className="max-w-4xl mx-auto px-4 py-5 flex items-center justify-between">
+        <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-emerald-500 rounded-xl flex items-center justify-center shadow-sm shadow-emerald-200">
               <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -107,9 +119,28 @@ export default function ImageConverter() {
               <p className="text-xs text-slate-500 font-medium">Fast, secure, browser-based conversion</p>
             </div>
           </div>
-          <div className="hidden sm:flex items-center gap-2 bg-emerald-50 text-emerald-700 text-xs font-semibold px-3 py-1.5 rounded-full border border-emerald-100">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-            100% Free & Private
+          <div className="flex items-center gap-3">
+            <div className="hidden sm:flex items-center gap-2 bg-emerald-50 text-emerald-700 text-xs font-semibold px-3 py-1.5 rounded-full border border-emerald-100">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+              100% Free & Private
+            </div>
+            <HeaderMenu
+              activeTab={activeTab}
+              onTabChange={handleTabChange}
+              mode={mode}
+              onModeChange={(newMode) => { setMode(newMode); handleReset(); }}
+              quality={quality}
+              onQualityChange={setQuality}
+              maxWidth={maxWidth}
+              onMaxWidthChange={setMaxWidth}
+              filesCount={files.length}
+              isConverting={isConverting}
+              progress={progress}
+              resultsCount={results?.length || 0}
+              onConvert={handleConvert}
+              onReset={handleReset}
+              onDownloadAll={handleDownloadAll}
+            />
           </div>
         </div>
       </header>
