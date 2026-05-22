@@ -162,19 +162,35 @@ export async function getVideoInfo(url: string): Promise<VideoInfo> {
       audioExt: bestAudio?.ext || bestCombined?.ext || 'm4a',
     };
   } catch (error: any) {
-    const message = error?.message || 'Unknown error';
-    if (message.includes('PRIVATE') || message.includes('SIGN IN') || message.includes('age')) {
+    const rawMessage = error?.message || 'Unknown error';
+    const rawStderr = error?.stderr || '';
+    const rawStdout = error?.stdout || '';
+    const rawCode = error?.exitCode ?? error?.code ?? 'N/A';
+
+    // Log raw error for diagnostics (never exposed to client)
+    console.error('yt-dlp raw error:', {
+      message: rawMessage,
+      stderr: rawStderr,
+      stdout: rawStdout?.slice(0, 500),
+      exitCode: rawCode,
+      binaryPath: getYtDlpBinaryPath() || 'default',
+    });
+
+    if (rawMessage.includes('PRIVATE') || rawMessage.includes('SIGN IN') || rawMessage.includes('age')) {
       throw new Error('This video is private, age-restricted, or requires authentication.');
     }
-    if (message.includes('not available') || message.includes('removed') || message.includes('copyright')) {
+    if (rawMessage.includes('not available') || rawMessage.includes('removed') || rawMessage.includes('copyright')) {
       throw new Error('This video is not available. It may have been removed or blocked.');
     }
-    if (message.includes('Invalid or unsupported URL')) {
+    if (rawMessage.includes('Invalid or unsupported URL')) {
       throw error;
+    }
+    if (rawMessage.includes('ENOENT') || rawMessage.includes('not found') || rawMessage.includes('spawn')) {
+      throw new Error('Video extraction binary is not available on this deployment.');
     }
     // Include the original error message in development for debugging
     if (process.env.NODE_ENV === 'development') {
-      throw new Error(`Failed to fetch video information: ${message}`);
+      throw new Error(`Failed to fetch video information: ${rawMessage}`);
     }
     throw new Error('Failed to fetch video information. Please check the URL and try again.');
   }
