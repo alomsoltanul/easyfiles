@@ -1,0 +1,7 @@
+{
+  "build": {
+    "env": {
+      "YOUTUBE_DL_FILENAME": "yt-dlp_linux"
+    }
+  }
+}

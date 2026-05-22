@@ -68,7 +68,14 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true, data: info }, { status: 200 });
   } catch (error: any) {
-    console.error('Video info API error:', sanitizeLogInput(error?.message || 'Unknown error'));
+    // Log full error details for diagnostics (internal only, not sent to client)
+    console.error('Video info API error details:', {
+      message: error?.message,
+      stderr: error?.stderr,
+      stdout: error?.stdout,
+      code: error?.exitCode,
+      stack: error?.stack?.split('\n').slice(0, 5),
+    });
 
     // Return sanitized error - never expose internal details
     const message = error?.message || 'Failed to process request.';

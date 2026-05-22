@@ -6,16 +6,51 @@
  * - Timeout controls
  * - Controlled options (no arbitrary flags)
  * - Error sanitization
+ * - Vercel/serverless compatibility
  */
 
-import youtubedl from 'youtube-dl-exec';
+import youtubedl, { create } from 'youtube-dl-exec';
 import { tmpdir } from 'os';
 import { join } from 'path';
+import { existsSync } from 'fs';
 import { isAllowedUrl } from './video-security';
 
-const DEFAULT_TIMEOUT = 30000; // 30 seconds for info
-const DOWNLOAD_TIMEOUT = 120000; // 2 minutes for download
-const MAX_FILE_SIZE_MB = 500; // 500MB limit
+// Vercel serverless functions have a ~10s timeout on Hobby plan
+const IS_VERCEL = process.env.VERCEL === '1';
+const DEFAULT_TIMEOUT = IS_VERCEL ? 10000 : 30000;
+const DOWNLOAD_TIMEOUT = IS_VERCEL ? 10000 : 120000;
+const MAX_FILE_SIZE_MB = 500;
+
+// Try to find the correct yt-dlp binary for the platform
+function getYtDlpBinaryPath(): string | undefined {
+  // Check common locations
+  const candidates = [
+    join(process.cwd(), 'node_modules', 'youtube-dl-exec', 'bin', 'yt-dlp_linux'),
+    join(process.cwd(), 'node_modules', 'youtube-dl-exec', 'bin', 'yt-dlp'),
+    join(__dirname, '..', '..', 'node_modules', 'youtube-dl-exec', 'bin', 'yt-dlp_linux'),
+    join(__dirname, '..', '..', 'node_modules', 'youtube-dl-exec', 'bin', 'yt-dlp'),
+    '/var/task/node_modules/youtube-dl-exec/bin/yt-dlp_linux',
+    '/var/task/node_modules/youtube-dl-exec/bin/yt-dlp',
+  ];
+
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  return undefined;
+}
+
+// Create a youtube-dl instance with the explicit binary path
+function getYtDlp() {
+  const binaryPath = getYtDlpBinaryPath();
+  if (binaryPath) {
+    return create(binaryPath);
+  }
+  // Fallback to default (will use the one in PATH or node_modules)
+  return youtubedl;
+}
 
 export interface VideoFormat {
   formatId: string;
@@ -58,19 +93,17 @@ export async function getVideoInfo(url: string): Promise<VideoInfo> {
   }
 
   try {
-    // Use dumpSingleJson to get structured metadata
-    // Note: we use an untyped object here because some runtime flags may not be in the types
+    const ytDlp = getYtDlp();
+
     const flags = {
       dumpSingleJson: true,
       noWarnings: true,
       callHome: false,
-      // Limit to avoid abuse
       maxFilesize: `${MAX_FILE_SIZE_MB}M`,
     } as any;
 
-    const result = await youtubedl(url, flags, { timeout: DEFAULT_TIMEOUT });
+    const result = await ytDlp(url, flags, { timeout: DEFAULT_TIMEOUT });
 
-    // youtube-dl-exec returns parsed JSON when dumpSingleJson is true
     const info = result as unknown as Record<string, any>;
 
     if (!info || !info.id) {
@@ -80,11 +113,8 @@ export async function getVideoInfo(url: string): Promise<VideoInfo> {
     // Extract and sanitize formats
     const formats: VideoFormat[] = (info.formats || [])
       .filter((f: any) => {
-        // Only include formats with URLs (skip fragmented/DASH-only without URLs)
         if (!f.url) return false;
-        // Skip DRM-protected
         if (f.has_drm) return false;
-        // Only common containers
         const ext = (f.ext || '').toLowerCase();
         return ['mp4', 'webm', 'm4a', 'mp3'].includes(ext);
       })
@@ -102,7 +132,6 @@ export async function getVideoInfo(url: string): Promise<VideoInfo> {
     const bestCombined = formats
       .filter((f) => f.hasVideo && f.hasAudio)
       .sort((a, b) => {
-        // Prefer higher resolution
         const aRes = parseInt(a.quality) || 0;
         const bRes = parseInt(b.quality) || 0;
         return bRes - aRes;
@@ -112,11 +141,9 @@ export async function getVideoInfo(url: string): Promise<VideoInfo> {
     const bestAudio = formats
       .filter((f) => f.hasAudio && !f.hasVideo)
       .sort((a, b) => {
-        // Prefer larger filesize as proxy for quality
         return (b.filesize || 0) - (a.filesize || 0);
       })[0];
 
-    // Sanitize title for safe display and filenames
     const title = String(info.title || 'video')
       .replace(/[\x00-\x1f\x7f-\x9f]/g, '')
       .slice(0, 200);
@@ -135,7 +162,6 @@ export async function getVideoInfo(url: string): Promise<VideoInfo> {
       audioExt: bestAudio?.ext || bestCombined?.ext || 'm4a',
     };
   } catch (error: any) {
-    // Sanitize error before re-throwing to avoid leaking sensitive info
     const message = error?.message || 'Unknown error';
     if (message.includes('PRIVATE') || message.includes('SIGN IN') || message.includes('age')) {
       throw new Error('This video is private, age-restricted, or requires authentication.');
@@ -144,7 +170,11 @@ export async function getVideoInfo(url: string): Promise<VideoInfo> {
       throw new Error('This video is not available. It may have been removed or blocked.');
     }
     if (message.includes('Invalid or unsupported URL')) {
-      throw error; // Pass through our own validation error
+      throw error;
+    }
+    // Include the original error message in development for debugging
+    if (process.env.NODE_ENV === 'development') {
+      throw new Error(`Failed to fetch video information: ${message}`);
     }
     throw new Error('Failed to fetch video information. Please check the URL and try again.');
   }
@@ -168,24 +198,20 @@ export async function downloadVideo(
   const outputExt = format === 'audio' ? 'mp3' : 'mp4';
   const outputPath = join(tempDir, `dl-${safeId}.${outputExt}`);
 
-  // Build strictly controlled options
-  // Using `as any` because some runtime flags may not be in the TypeScript types
   const flags: any = {
     output: outputPath,
     noWarnings: true,
     callHome: false,
     restrictFilenames: true,
-    // Limit file size to prevent abuse
     maxFilesize: `${MAX_FILE_SIZE_MB}M`,
   };
 
   if (format === 'audio') {
     flags.extractAudio = true;
     flags.audioFormat = 'mp3';
-    flags.audioQuality = 0; // Best
+    flags.audioQuality = 0;
     flags.preferFfmpeg = true;
   } else {
-    // Video format selection - strictly controlled
     switch (quality) {
       case '1080p':
         flags.format = 'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080][ext=mp4]/best';
@@ -206,13 +232,10 @@ export async function downloadVideo(
   }
 
   try {
-    await youtubedl(url, flags, {
-      timeout: DOWNLOAD_TIMEOUT,
-    });
-
+    const ytDlp = getYtDlp();
+    await ytDlp(url, flags, { timeout: DOWNLOAD_TIMEOUT });
     return outputPath;
   } catch (error: any) {
-    // Cleanup attempt on failure
     try {
       const { unlink } = await import('fs/promises');
       await unlink(outputPath);
@@ -241,6 +264,7 @@ export async function getDirectDownloadUrl(url: string, format: 'video' | 'audio
   }
 
   try {
+    const ytDlp = getYtDlp();
     const flags: any = {
       getUrl: true,
       noWarnings: true,
@@ -253,11 +277,8 @@ export async function getDirectDownloadUrl(url: string, format: 'video' | 'audio
       flags.format = 'best[ext=mp4]/best';
     }
 
-    const result = await youtubedl(url, flags, {
-      timeout: DEFAULT_TIMEOUT,
-    });
+    const result = await ytDlp(url, flags, { timeout: DEFAULT_TIMEOUT });
 
-    // Result is the URL string
     const directUrl = typeof result === 'string' ? result.trim() : null;
 
     if (!directUrl || !directUrl.startsWith('http')) {

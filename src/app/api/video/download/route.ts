@@ -153,7 +153,13 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    console.error('Video download API error:', sanitizeLogInput(error?.message || 'Unknown error'));
+    console.error('Video download API error details:', {
+      message: error?.message,
+      stderr: error?.stderr,
+      stdout: error?.stdout,
+      code: error?.exitCode,
+      stack: error?.stack?.split('\n').slice(0, 5),
+    });
 
     const message = error?.message || 'Download failed.';
 
