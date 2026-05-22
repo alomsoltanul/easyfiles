@@ -2,16 +2,6 @@
 
 import React, { useState, useCallback, useEffect } from 'react';
 
-interface VideoFormat {
-  formatId: string;
-  quality: string;
-  ext: string;
-  filesize?: number;
-  hasAudio: boolean;
-  hasVideo: boolean;
-  url: string;
-}
-
 interface VideoInfo {
   id: string;
   title: string;
@@ -19,17 +9,12 @@ interface VideoInfo {
   duration: number;
   uploader: string;
   webpageUrl: string;
-  formats: VideoFormat[];
-  bestVideoUrl?: string;
-  bestAudioUrl?: string;
-  videoExt?: string;
-  audioExt?: string;
 }
 
 type DownloadFormat = 'video' | 'audio';
 type VideoQuality = 'best' | '1080p' | '720p' | '480p' | '360p';
 
-const PLATFORM_ICONS: Record<string, React.ReactElement> = {
+const PLATFORM_ICONS: Record<string, React.ReactNode> = {
   youtube: (
     <svg className="w-5 h-5 text-red-500" viewBox="0 0 24 24" fill="currentColor">
       <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" />
@@ -82,15 +67,6 @@ function formatDuration(seconds: number): string {
   return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
-function formatFileSize(bytes?: number): string {
-  if (!bytes) return 'Unknown size';
-  const mb = bytes / (1024 * 1024);
-  if (mb >= 1024) {
-    return `${(mb / 1024).toFixed(2)} GB`;
-  }
-  return `${mb.toFixed(1)} MB`;
-}
-
 export default function VideoDownloader() {
   const [url, setUrl] = useState('');
   const [platform, setPlatform] = useState('unknown');
@@ -100,10 +76,8 @@ export default function VideoDownloader() {
   const [error, setError] = useState<string | null>(null);
   const [downloadFormat, setDownloadFormat] = useState<DownloadFormat>('video');
   const [videoQuality, setVideoQuality] = useState<VideoQuality>('best');
-  const [downloadProgress, setDownloadProgress] = useState(0);
   const [statusMessage, setStatusMessage] = useState('');
 
-  // Detect platform when URL changes
   useEffect(() => {
     setPlatform(detectPlatform(url));
     setError(null);
@@ -148,88 +122,50 @@ export default function VideoDownloader() {
 
     setIsDownloading(true);
     setError(null);
-    setDownloadProgress(0);
-    setStatusMessage(downloadFormat === 'audio' ? 'Preparing MP3 download...' : 'Preparing video download...');
+    setStatusMessage('Getting download link...');
 
     try {
-      // For direct downloads (works in all environments including serverless)
-      // We use the server to get the direct URL, then client downloads
       const response = await fetch('/api/video/download', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           url: videoInfo.webpageUrl,
           format: downloadFormat,
-          quality: downloadFormat === 'video' ? videoQuality : undefined,
-          mode: 'direct',
         }),
       });
 
       const data = await response.json();
 
-      if (response.ok && data.mode === 'direct' && data.url) {
-        // Direct URL mode - trigger browser download
-        setStatusMessage('Starting download...');
-
-        const a = document.createElement('a');
-        a.href = data.url;
-        a.download = data.filename;
-        a.target = '_blank';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-
-        setStatusMessage('Download started!');
-        setTimeout(() => setStatusMessage(''), 3000);
-      } else if (response.ok) {
-        // Server-side streaming
-        setStatusMessage(downloadFormat === 'audio' ? 'Converting to MP3...' : 'Downloading video...');
-
-        const downloadResponse = await fetch('/api/video/download', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            url: videoInfo.webpageUrl,
-            format: downloadFormat,
-            quality: downloadFormat === 'video' ? videoQuality : undefined,
-            mode: 'server',
-          }),
-        });
-
-        if (!downloadResponse.ok) {
-          const errData = await downloadResponse.json().catch(() => ({}));
-          throw new Error(errData.error || 'Download failed');
-        }
-
-        // Stream to blob and trigger download
-        const blob = await downloadResponse.blob();
-        const blobUrl = URL.createObjectURL(blob);
-        const contentDisposition = downloadResponse.headers.get('content-disposition');
-        const filename = contentDisposition
-          ? contentDisposition.split('filename="')[1]?.replace('"', '') || 'download'
-          : `video-${Date.now()}.${downloadFormat === 'audio' ? 'mp3' : 'mp4'}`;
-
-        const a = document.createElement('a');
-        a.href = blobUrl;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(blobUrl);
-
-        setStatusMessage('Download complete!');
-        setTimeout(() => setStatusMessage(''), 3000);
-      } else {
-        throw new Error(data.error || 'Download failed');
+      if (!response.ok) {
+        throw new Error(data.error || `Download failed (${response.status})`);
       }
+
+      if (!data.url) {
+        throw new Error('No download URL returned from server');
+      }
+
+      // Open the direct CDN URL in a new tab for download
+      // Cross-origin <a download> doesn't work, so window.open is the most reliable method
+      setStatusMessage('Opening download...');
+
+      // Create a temporary link and click it
+      const link = document.createElement('a');
+      link.href = data.url;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      setStatusMessage('Download started! Check your browser downloads.');
+      setTimeout(() => setStatusMessage(''), 4000);
     } catch (err: any) {
       setError(err.message || 'Download failed. Please try again.');
       setStatusMessage('');
     } finally {
       setIsDownloading(false);
-      setDownloadProgress(0);
     }
-  }, [videoInfo, downloadFormat, videoQuality]);
+  }, [videoInfo, downloadFormat]);
 
   const handlePaste = useCallback(async () => {
     try {
@@ -242,6 +178,10 @@ export default function VideoDownloader() {
 
   const platformIcon = PLATFORM_ICONS[platform] || PLATFORM_ICONS.unknown;
   const isValidUrl = url.trim().length > 0;
+
+  // Label text based on format
+  const formatLabel = downloadFormat === 'audio' ? 'Audio' : 'Video';
+  const formatExt = downloadFormat === 'audio' ? 'M4A/WebM' : 'MP4';
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -442,9 +382,15 @@ export default function VideoDownloader() {
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
                     </svg>
-                    Audio (MP3)
+                    Audio (M4A/WebM)
                   </button>
                 </div>
+                <p className="text-xs text-slate-400 mt-2">
+                  {downloadFormat === 'audio'
+                    ? 'Audio is extracted as-is from the source. The file may be M4A or WebM format depending on the platform.'
+                    : 'Video is downloaded in MP4 format when available.'
+                  }
+                </p>
               </div>
 
               {/* Quality Selector (Video only) */}
@@ -481,16 +427,10 @@ export default function VideoDownloader() {
                 {isDownloading ? (
                   <div className="space-y-3">
                     <div className="flex items-center justify-between text-sm font-medium text-slate-700">
-                      <span>{statusMessage || 'Downloading...'}</span>
-                      {downloadProgress > 0 && (
-                        <span className="text-emerald-600">{downloadProgress}%</span>
-                      )}
+                      <span>{statusMessage || 'Preparing download...'}</span>
                     </div>
                     <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-emerald-500 rounded-full transition-all duration-300 ease-out"
-                        style={{ width: `${downloadProgress || 30}%` }}
-                      />
+                      <div className="h-full bg-emerald-500 rounded-full animate-pulse" style={{ width: '60%' }} />
                     </div>
                   </div>
                 ) : (
@@ -502,7 +442,7 @@ export default function VideoDownloader() {
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                       </svg>
-                      Download {downloadFormat === 'audio' ? 'MP3' : 'Video'}
+                      Download {formatLabel} ({formatExt})
                     </button>
                     <button
                       onClick={() => { setVideoInfo(null); setError(null); setStatusMessage(''); }}
@@ -551,7 +491,7 @@ export default function VideoDownloader() {
             </div>
             <h3 className="font-semibold text-slate-800 text-sm mb-1">Video & Audio</h3>
             <p className="text-xs text-slate-500 leading-relaxed">
-              Download videos in MP4 format or extract audio as MP3. Choose your preferred quality.
+              Download videos in MP4 format or extract audio streams. Audio format depends on the source platform.
             </p>
           </div>
         </div>

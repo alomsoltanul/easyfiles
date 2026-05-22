@@ -1,0 +1,5 @@
+# Standalone transcription dependencies
+# Usage: pip install -r requirements-transcribe.txt
+
+openai-whisper
+yt-dlp
