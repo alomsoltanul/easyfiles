@@ -63,6 +63,16 @@ const ALL_TOOLS: Tool[] = [
     icon: SVG_IMAGE, department: 'image',
   },
   {
+    label: 'HEIC to PNG', href: '/image/heic-to-png', route: 'heic-to-png',
+    description: 'Convert Apple HEIC/HEIF photos to lossless PNG — single or bulk processing',
+    icon: SVG_IMAGE, department: 'image',
+  },
+  {
+    label: 'HEIC to JPEG', href: '/image/heic-to-jpeg', route: 'heic-to-jpeg',
+    description: 'Convert Apple HEIC/HEIF photos to JPEG — single or bulk processing',
+    icon: SVG_IMAGE, department: 'image',
+  },
+  {
     label: 'Image Compressor', href: '/image/compress', route: 'compress',
     description: 'Reduce image file size while maintaining visual quality — WebP optimization',
     icon: SVG_IMAGE, department: 'image',
@@ -216,6 +226,8 @@ const ALL_TOOLS: Tool[] = [
 
 const routeIcons: Record<string, React.ReactNode> = {
   convert: SVG_IMAGE,
+  'heic-to-png': SVG_IMAGE,
+  'heic-to-jpeg': SVG_IMAGE,
   compress: SVG_IMAGE,
   resize: SVG_IMAGE,
   format: SVG_JSON,
