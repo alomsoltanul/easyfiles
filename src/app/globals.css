@@ -20,6 +20,35 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Hero entrance animation */
+@keyframes hero-rise {
+  from {
+    opacity: 0;
+    transform: translateY(2rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.hero-rise {
+  animation: hero-rise 0.7s ease-out both;
+}
+
+.hero-rise-delay {
+  animation-delay: 0.15s;
+}
+
+/* Hide scrollbar for horizontal tab strips */
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 /* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 6px;

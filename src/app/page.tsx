@@ -1,5 +1,5 @@
-import ImageConverter from '@/components/ImageConverter';
+import ToolsDashboard from '@/components/ToolsDashboard';
 
 export default function Home() {
-  return <ImageConverter />;
+  return <ToolsDashboard />;
 }

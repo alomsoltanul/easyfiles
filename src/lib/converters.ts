@@ -11,7 +11,10 @@ const loadHeic2Any = async () => {
   return heic2any;
 };
 
+// Legacy type kept for backward compatibility
 export type ConversionFormat = 'png-to-webp' | 'jpg-to-webp' | 'heic-to-webp';
+
+export type OutputFormat = 'image/jpeg' | 'image/png' | 'image/webp';
 
 export interface ConversionResult {
   originalFile: File;
@@ -28,29 +31,22 @@ export interface ConversionOptions {
   maxWidth?: number;
 }
 
+// Legacy functions for backward compat
 export function getAcceptedTypes(format: ConversionFormat): string {
   switch (format) {
-    case 'png-to-webp':
-      return '.png,image/png';
-    case 'jpg-to-webp':
-      return '.jpg,.jpeg,image/jpeg,image/jpg';
-    case 'heic-to-webp':
-      return '.heic,.heif,image/heic,image/heif';
-    default:
-      return 'image/*';
+    case 'png-to-webp': return '.png,image/png';
+    case 'jpg-to-webp': return '.jpg,.jpeg,image/jpeg,image/jpg';
+    case 'heic-to-webp': return '.heic,.heif,image/heic,image/heif';
+    default: return 'image/*';
   }
 }
 
 export function getFormatLabel(format: ConversionFormat): string {
   switch (format) {
-    case 'png-to-webp':
-      return 'PNG';
-    case 'jpg-to-webp':
-      return 'JPG / JPEG';
-    case 'heic-to-webp':
-      return 'HEIC';
-    default:
-      return 'Image';
+    case 'png-to-webp': return 'PNG';
+    case 'jpg-to-webp': return 'JPG / JPEG';
+    case 'heic-to-webp': return 'HEIC';
+    default: return 'Image';
   }
 }
 
@@ -66,6 +62,16 @@ export function validateFileType(file: File, format: ConversionFormat): boolean 
     default:
       return false;
   }
+}
+
+// New: validate any supported image type
+export function validateImageFile(file: File): boolean {
+  const name = file.name.toLowerCase();
+  if (file.type === 'image/heic' || file.type === 'image/heif' || name.endsWith('.heic') || name.endsWith('.heif')) return true;
+  if (file.type === 'image/jpeg' || file.type === 'image/jpg' || name.endsWith('.jpg') || name.endsWith('.jpeg')) return true;
+  if (file.type === 'image/png' || name.endsWith('.png')) return true;
+  if (file.type === 'image/webp' || name.endsWith('.webp')) return true;
+  return false;
 }
 
 export async function getImageDimensions(file: File): Promise<{ width: number; height: number }> {
@@ -84,8 +90,10 @@ export async function getImageDimensions(file: File): Promise<{ width: number; h
   });
 }
 
-export async function convertImageToWebp(
+// New bidirectional converter — replaces convertImageToWebp
+export async function convertImage(
   file: File,
+  targetFormat: OutputFormat,
   options: ConversionOptions
 ): Promise<{ blob: Blob; width: number; height: number }> {
   if (!isBrowser) {
@@ -93,8 +101,8 @@ export async function convertImageToWebp(
   }
 
   try {
-    const isHeic = file.type === 'image/heic' || 
-                   file.type === 'image/heif' || 
+    const isHeic = file.type === 'image/heic' ||
+                   file.type === 'image/heif' ||
                    file.name.toLowerCase().endsWith('.heic') ||
                    file.name.toLowerCase().endsWith('.heif');
 
@@ -111,14 +119,26 @@ export async function convertImageToWebp(
       sourceBlob = file;
     }
 
-    return await blobToWebP(sourceBlob, options);
+    return await blobToFormat(sourceBlob, targetFormat, options);
   } catch (error) {
     console.error('Conversion error:', error);
-    throw new Error('Failed to convert image to WebP. Please ensure it is a valid image file.');
+    throw new Error('Failed to convert image. Please ensure it is a valid image file.');
   }
 }
 
-async function blobToWebP(blob: Blob, options: ConversionOptions): Promise<{ blob: Blob; width: number; height: number }> {
+// Legacy wrapper — kept for backward compatibility
+export async function convertImageToWebp(
+  file: File,
+  options: ConversionOptions
+): Promise<{ blob: Blob; width: number; height: number }> {
+  return convertImage(file, 'image/webp', options);
+}
+
+async function blobToFormat(
+  blob: Blob,
+  targetFormat: OutputFormat,
+  options: ConversionOptions
+): Promise<{ blob: Blob; width: number; height: number }> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
 
@@ -129,7 +149,6 @@ async function blobToWebP(blob: Blob, options: ConversionOptions): Promise<{ blo
         let targetWidth = img.width;
         let targetHeight = img.height;
 
-        // Resize if maxWidth is set and image is larger
         if (options.maxWidth && img.width > options.maxWidth) {
           const scale = options.maxWidth / img.width;
           targetWidth = Math.round(img.width * scale);
@@ -146,7 +165,6 @@ async function blobToWebP(blob: Blob, options: ConversionOptions): Promise<{ blo
           return;
         }
 
-        // White background for images that might have transparency (like HEIC/PNG)
         ctx.fillStyle = '#FFFFFF';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
@@ -156,10 +174,10 @@ async function blobToWebP(blob: Blob, options: ConversionOptions): Promise<{ blo
             if (result) {
               resolve({ blob: result, width: targetWidth, height: targetHeight });
             } else {
-              reject(new Error('Failed to convert to WebP'));
+              reject(new Error(`Failed to convert to ${targetFormat}`));
             }
           },
-          'image/webp',
+          targetFormat,
           options.quality
         );
       };
@@ -176,8 +194,9 @@ async function blobToWebP(blob: Blob, options: ConversionOptions): Promise<{ blo
   });
 }
 
-export async function convertBulkToWebP(
+export async function convertBulkToFormat(
   files: File[],
+  targetFormat: OutputFormat,
   options: ConversionOptions,
   onProgress?: (completed: number, total: number) => void
 ): Promise<ConversionResult[]> {
@@ -186,11 +205,11 @@ export async function convertBulkToWebP(
   for (let i = 0; i < files.length; i++) {
     const file = files[i];
     try {
-      const { blob, width, height } = await convertImageToWebp(file, options);
+      const { blob, width, height } = await convertImage(file, targetFormat, options);
       results.push({
         originalFile: file,
         convertedBlob: blob,
-        fileName: generateDownloadFileName(file.name),
+        fileName: generateDownloadFileName(file.name, targetFormat),
         originalSize: file.size,
         convertedSize: blob.size,
         width,
@@ -208,9 +227,27 @@ export async function convertBulkToWebP(
   return results;
 }
 
-export function generateDownloadFileName(originalName: string): string {
+// Legacy bulk convert
+export async function convertBulkToWebP(
+  files: File[],
+  options: ConversionOptions,
+  onProgress?: (completed: number, total: number) => void
+): Promise<ConversionResult[]> {
+  return convertBulkToFormat(files, 'image/webp', options, onProgress);
+}
+
+export function generateDownloadFileName(originalName: string, targetFormat?: OutputFormat): string {
   const baseName = originalName.replace(/\.[^/.]+$/, '');
-  return `${baseName}.webp`;
+  const ext = targetFormat ? getExtension(targetFormat) : '.webp';
+  return `${baseName}${ext}`;
+}
+
+function getExtension(format: OutputFormat): string {
+  switch (format) {
+    case 'image/jpeg': return '.jpg';
+    case 'image/png': return '.png';
+    case 'image/webp': return '.webp';
+  }
 }
 
 export function downloadImage(blob: Blob, fileName: string): void {

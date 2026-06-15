@@ -210,8 +210,7 @@ export default function VideoDownloader() {
   const isValidUrl = url.trim().length > 0;
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <main className="max-w-4xl mx-auto px-4 py-8">
+    <div className="max-w-4xl mx-auto px-4 py-8">
         {/* Page Header */}
         <div className="mb-8">
           <h1 className="text-2xl font-bold text-slate-900">Video Downloader</h1>
@@ -521,16 +520,6 @@ export default function VideoDownloader() {
             </p>
           </div>
         </div>
-      </main>
-
-      {/* Footer */}
-      <footer className="border-t border-slate-200 mt-12">
-        <div className="max-w-4xl mx-auto px-4 py-6 text-center">
-          <p className="text-xs text-slate-400">
-            URLs are validated and processed securely. No tracking, no logs.
-          </p>
-        </div>
-      </footer>
     </div>
   );
 }

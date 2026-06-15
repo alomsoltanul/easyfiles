@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import AppHeader from "@/components/AppHeader";
+import GlobalFooter from "@/components/GlobalFooter";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -14,9 +15,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ConvertTools — Image Converter & Video Downloader",
-  description: "Convert PNG, JPG, HEIC images to WebP and download videos from YouTube, Facebook, Instagram, and X. Free, private, and secure.",
-  keywords: ["webp converter", "png to webp", "jpg to webp", "heic to webp", "video downloader", "youtube downloader", "mp3 converter"],
+  title: "ConvertTools — All-in-One Image, PDF & Video Tools",
+  description: "Convert images between HEIC, JPEG, PNG, WebP. Merge, split, compress PDFs. Scan documents with OCR. Download videos. All free, private, and browser-based.",
+  keywords: ["image converter", "heic to jpg", "png to webp", "pdf merger", "pdf compressor", "ocr scanner", "video downloader", "image compressor"],
 };
 
 export default function RootLayout({
@@ -29,9 +30,10 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} antialiased`}
     >
-      <body className="min-h-screen bg-slate-50" suppressHydrationWarning>
+      <body className="min-h-screen bg-slate-50 flex flex-col" suppressHydrationWarning>
         <AppHeader />
-        {children}
+        <main className="flex-1">{children}</main>
+        <GlobalFooter />
       </body>
     </html>
   );
