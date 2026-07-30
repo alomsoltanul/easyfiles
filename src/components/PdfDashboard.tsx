@@ -37,6 +37,8 @@ interface Tool {
   description: string;
   category: CategoryKey;
   icon: React.ReactNode;
+  comingSoon?: boolean;
+  isNew?: boolean;
 }
 
 const iconClass = 'w-6 h-6';
@@ -123,6 +125,92 @@ const ICONS: Record<string, React.ReactNode> = {
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M13 16h-1v-4h-1m1-4h.01M12 22a10 10 0 100-20 10 10 0 000 20z" />
     </svg>
   ),
+  word: (
+    <svg className={iconClass} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M4 4h16v16H4z M8 8l1.5 8 2-6 2 6L15 8" />
+    </svg>
+  ),
+  powerpoint: (
+    <svg className={iconClass} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M4 4h16v16H4z M9 17V8h3a2.5 2.5 0 010 5H9" />
+    </svg>
+  ),
+  excel: (
+    <svg className={iconClass} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M4 4h16v16H4z M8 8l8 8M16 8l-8 8" />
+    </svg>
+  ),
+  edit: (
+    <svg className={iconClass} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+    </svg>
+  ),
+  html: (
+    <svg className={iconClass} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M8 9l-4 3 4 3m8-6l4 3-4 3m-2-8l-4 10" />
+    </svg>
+  ),
+  organize: (
+    <svg className={iconClass} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M4 6h16M4 12h16M4 18h10" />
+    </svg>
+  ),
+  pdfa: (
+    <svg className={iconClass} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M9 12l2 2 4-4M12 3l8 4v6c0 5-3.5 8-8 8s-8-3-8-8V7l8-4z" />
+    </svg>
+  ),
+  repair: (
+    <svg className={iconClass} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M14.7 6.3a4 4 0 00-5.4 5.4l-6 6a2 2 0 102.8 2.8l6-6a4 4 0 005.4-5.4l-2.2 2.2-2-2 2.2-2.2z" />
+    </svg>
+  ),
+  pageNumbers: (
+    <svg className={iconClass} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M4 4h16v16H4z M9 18h1v-3l-1 1M14 15h2v3h-2v-1.5" />
+    </svg>
+  ),
+  compare: (
+    <svg className={iconClass} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M9 3v18M15 3v18M4 6h4M4 12h4M4 18h4M16 8h4M16 14h4" />
+    </svg>
+  ),
+  redact: (
+    <svg className={iconClass} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M4 4h16v16H4z M7 10h10M7 14h6" />
+      <rect x="6" y="9" width="8" height="2" fill="currentColor" />
+    </svg>
+  ),
+  crop: (
+    <svg className={iconClass} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M6 2v16h16M2 6h16v16" />
+    </svg>
+  ),
+  forms: (
+    <svg className={iconClass} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+    </svg>
+  ),
+  ai: (
+    <svg className={iconClass} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M9.7 3.3l1.3 3 3 1.3-3 1.3-1.3 3-1.3-3-3-1.3 3-1.3 1.3-3zM17 12l.8 1.8 1.8.8-1.8.8-.8 1.8-.8-1.8-1.8-.8 1.8-.8.8-1.8zM6 16l.6 1.4 1.4.6-1.4.6L6 20l-.6-1.4-1.4-.6 1.4-.6L6 16z" />
+    </svg>
+  ),
+  translate: (
+    <svg className={iconClass} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M3 5h12M9 3v2c0 5-3 8-6 8m4-4c0 3 3 6 8 6M14 21l5-12 5 12m-8.5-3h7" />
+    </svg>
+  ),
+  markdown: (
+    <svg className={iconClass} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M3 6h18v12H3z M6 15V9l2.5 3L11 9v6M14 9v6m0 0l2-2m-2 2l-2-2" />
+    </svg>
+  ),
+  workflow: (
+    <svg className={iconClass} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M13 10V3L4 14h7v7l9-11h-7zM17 3h4M17 7h4" />
+    </svg>
+  ),
 };
 
 const TOOLS: Tool[] = [
@@ -148,6 +236,33 @@ const TOOLS: Tool[] = [
   { label: 'OCR PDF',        href: '/pdf/ocr',          description: 'Extract text from scans in 6 languages — outputs searchable PDF',   category: 'intelligence', icon: ICONS.ocr },
 
   { label: 'Scan to PDF',    href: '/pdf/scan',         description: 'Photo → auto-crop, enhance, OCR, and bundle into one PDF',          category: 'workflows',    icon: ICONS.scan },
+
+  // --- Coming soon ---
+  { label: 'PDF to Word',       href: '#', description: 'Convert PDF files into easy-to-edit DOC and DOCX documents.',                        category: 'convert',      icon: ICONS.word,        comingSoon: true },
+  { label: 'PDF to PowerPoint', href: '#', description: 'Turn PDF files into easy-to-edit PPT and PPTX slideshows.',                          category: 'convert',      icon: ICONS.powerpoint,  comingSoon: true },
+  { label: 'PDF to Excel',      href: '#', description: 'Pull data straight from PDFs into Excel spreadsheets in seconds.',                    category: 'convert',      icon: ICONS.excel,       comingSoon: true },
+  { label: 'Word to PDF',       href: '#', description: 'Make DOC and DOCX files easy to read by converting them to PDF.',                     category: 'convert',      icon: ICONS.word,        comingSoon: true },
+  { label: 'PowerPoint to PDF', href: '#', description: 'Make PPT and PPTX slideshows easy to view by converting them to PDF.',                category: 'convert',      icon: ICONS.powerpoint,  comingSoon: true },
+  { label: 'Excel to PDF',      href: '#', description: 'Make EXCEL spreadsheets easy to read by converting them to PDF.',                     category: 'convert',      icon: ICONS.excel,       comingSoon: true },
+  { label: 'HTML to PDF',       href: '#', description: 'Convert webpages in HTML to PDF — paste a URL and export in one click.',              category: 'convert',      icon: ICONS.html,        comingSoon: true },
+  { label: 'PDF to Markdown',   href: '#', description: 'Turn PDFs into Markdown. Perfect for notes, docs, and LLMs — headings preserved.',    category: 'convert',      icon: ICONS.markdown,    comingSoon: true, isNew: true },
+
+  { label: 'Edit PDF',          href: '#', description: 'Add text, images, shapes, or freehand annotations. Change font, size, and color.',    category: 'edit',         icon: ICONS.edit,        comingSoon: true },
+  { label: 'Page Numbers',      href: '#', description: 'Add page numbers to PDFs — pick position, dimensions, and typography.',               category: 'edit',         icon: ICONS.pageNumbers, comingSoon: true },
+  { label: 'Crop PDF',          href: '#', description: 'Crop margins or select specific areas, then apply to one page or the whole doc.',      category: 'edit',         icon: ICONS.crop,        comingSoon: true },
+  { label: 'Organize PDF',      href: '#', description: 'Sort, delete, and insert pages in one unified page manager view.',                     category: 'organize',     icon: ICONS.organize,    comingSoon: true },
+
+  { label: 'PDF to PDF/A',      href: '#', description: 'Convert to PDF/A, the ISO-standard for long-term archival preservation.',              category: 'optimize',     icon: ICONS.pdfa,        comingSoon: true },
+  { label: 'Repair PDF',        href: '#', description: 'Recover data from damaged or corrupt PDF files.',                                       category: 'optimize',     icon: ICONS.repair,      comingSoon: true },
+
+  { label: 'Redact PDF',        href: '#', description: 'Permanently remove sensitive text and graphics from a PDF.',                            category: 'security',     icon: ICONS.redact,      comingSoon: true },
+  { label: 'PDF Forms',         href: '#', description: 'Detect fields, create fillable PDFs, or fill forms — text, checkboxes, lists.',        category: 'edit',         icon: ICONS.forms,       comingSoon: true, isNew: true },
+
+  { label: 'Compare PDF',       href: '#', description: 'Side-by-side comparison — spot changes between document versions.',                    category: 'intelligence', icon: ICONS.compare,     comingSoon: true },
+  { label: 'AI Summarizer',     href: '#', description: 'Generate concise summaries from articles and long PDFs in seconds.',                   category: 'intelligence', icon: ICONS.ai,          comingSoon: true, isNew: true },
+  { label: 'Translate PDF',     href: '#', description: 'Translate PDFs with AI — fonts, layout, and formatting stay intact.',                  category: 'intelligence', icon: ICONS.translate,   comingSoon: true, isNew: true },
+
+  { label: 'Create Workflow',   href: '#', description: 'Chain your favorite tools into custom workflows, automate, and reuse anytime.',        category: 'workflows',    icon: ICONS.workflow,    comingSoon: true },
 ];
 
 function TabButton({ active, onClick, children, count }: { active: boolean; onClick: () => void; children: React.ReactNode; count: number }) {
@@ -283,18 +398,19 @@ export default function PdfDashboard() {
             </p>
 
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
-              {filtered.map((tool) => {
+              {filtered.map((tool, i) => {
                 const meta = catMeta(tool.category);
-                return (
-                  <Link
-                    key={tool.href}
-                    href={tool.href}
-                    className="group relative bg-white rounded-2xl border border-slate-200 p-6 shadow-sm hover:shadow-lg hover:border-slate-300 transition-all duration-200 hover:-translate-y-1"
-                  >
-                    <div className={`inline-flex w-12 h-12 rounded-xl items-center justify-center ${meta.bg} ${meta.text} ring-1 ${meta.ring} mb-4 group-hover:scale-110 transition-transform`}>
+                const cardInner = (
+                  <>
+                    {tool.isNew && (
+                      <span className="absolute top-3 right-3 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-gradient-to-r from-fuchsia-500 to-rose-500 text-white shadow-sm">
+                        New
+                      </span>
+                    )}
+                    <div className={`inline-flex w-12 h-12 rounded-xl items-center justify-center ${meta.bg} ${meta.text} ring-1 ${meta.ring} mb-4 ${!tool.comingSoon ? 'group-hover:scale-110' : ''} transition-transform`}>
                       {tool.icon}
                     </div>
-                    <h3 className="text-base font-bold text-slate-900 mb-1.5 group-hover:text-slate-950">
+                    <h3 className={`text-base font-bold mb-1.5 ${tool.comingSoon ? 'text-slate-700' : 'text-slate-900 group-hover:text-slate-950'}`}>
                       {tool.label}
                     </h3>
                     <p className="text-sm text-slate-500 leading-relaxed line-clamp-2">
@@ -304,12 +420,40 @@ export default function PdfDashboard() {
                       <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded ${meta.bg} ${meta.text}`}>
                         {meta.label}
                       </span>
-                      <span className="text-slate-300 group-hover:text-slate-600 group-hover:translate-x-1 transition-all">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                        </svg>
-                      </span>
+                      {tool.comingSoon ? (
+                        <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded bg-slate-100 text-slate-500">
+                          Coming Soon
+                        </span>
+                      ) : (
+                        <span className="text-slate-300 group-hover:text-slate-600 group-hover:translate-x-1 transition-all">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                          </svg>
+                        </span>
+                      )}
                     </div>
+                  </>
+                );
+
+                if (tool.comingSoon) {
+                  return (
+                    <div
+                      key={`${tool.label}-${i}`}
+                      className="group relative bg-white rounded-2xl border border-dashed border-slate-200 p-6 opacity-75 cursor-not-allowed"
+                      aria-disabled="true"
+                    >
+                      {cardInner}
+                    </div>
+                  );
+                }
+
+                return (
+                  <Link
+                    key={tool.href}
+                    href={tool.href}
+                    className="group relative bg-white rounded-2xl border border-slate-200 p-6 shadow-sm hover:shadow-lg hover:border-slate-300 transition-all duration-200 hover:-translate-y-1"
+                  >
+                    {cardInner}
                   </Link>
                 );
               })}
