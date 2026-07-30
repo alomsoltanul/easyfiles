@@ -237,13 +237,15 @@ const TOOLS: Tool[] = [
 
   { label: 'Scan to PDF',    href: '/pdf/scan',         description: 'Photo → auto-crop, enhance, OCR, and bundle into one PDF',          category: 'workflows',    icon: ICONS.scan },
 
+  // Doc conversions (live)
+  { label: 'PDF to Word',       href: '/pdf/to-word',         description: 'Convert PDF files into editable DOC and DOCX documents.',            category: 'convert', icon: ICONS.word },
+  { label: 'PDF to PowerPoint', href: '/pdf/to-powerpoint',   description: 'Turn PDF pages into PPTX slides — one slide per page.',              category: 'convert', icon: ICONS.powerpoint },
+  { label: 'PDF to Excel',      href: '/pdf/to-excel',        description: 'Pull data from PDFs straight into XLSX spreadsheets.',                category: 'convert', icon: ICONS.excel },
+  { label: 'Word to PDF',       href: '/pdf/from-word',       description: 'Convert DOC and DOCX files into portable PDF.',                      category: 'convert', icon: ICONS.word },
+  { label: 'PowerPoint to PDF', href: '/pdf/from-powerpoint', description: 'Convert PPT and PPTX slideshows into PDF.',                          category: 'convert', icon: ICONS.powerpoint },
+  { label: 'Excel to PDF',      href: '/pdf/from-excel',      description: 'Convert XLSX and CSV spreadsheets into PDF.',                        category: 'convert', icon: ICONS.excel },
+
   // --- Coming soon ---
-  { label: 'PDF to Word',       href: '#', description: 'Convert PDF files into easy-to-edit DOC and DOCX documents.',                        category: 'convert',      icon: ICONS.word,        comingSoon: true },
-  { label: 'PDF to PowerPoint', href: '#', description: 'Turn PDF files into easy-to-edit PPT and PPTX slideshows.',                          category: 'convert',      icon: ICONS.powerpoint,  comingSoon: true },
-  { label: 'PDF to Excel',      href: '#', description: 'Pull data straight from PDFs into Excel spreadsheets in seconds.',                    category: 'convert',      icon: ICONS.excel,       comingSoon: true },
-  { label: 'Word to PDF',       href: '#', description: 'Make DOC and DOCX files easy to read by converting them to PDF.',                     category: 'convert',      icon: ICONS.word,        comingSoon: true },
-  { label: 'PowerPoint to PDF', href: '#', description: 'Make PPT and PPTX slideshows easy to view by converting them to PDF.',                category: 'convert',      icon: ICONS.powerpoint,  comingSoon: true },
-  { label: 'Excel to PDF',      href: '#', description: 'Make EXCEL spreadsheets easy to read by converting them to PDF.',                     category: 'convert',      icon: ICONS.excel,       comingSoon: true },
   { label: 'HTML to PDF',       href: '#', description: 'Convert webpages in HTML to PDF — paste a URL and export in one click.',              category: 'convert',      icon: ICONS.html,        comingSoon: true },
   { label: 'PDF to Markdown',   href: '#', description: 'Turn PDFs into Markdown. Perfect for notes, docs, and LLMs — headings preserved.',    category: 'convert',      icon: ICONS.markdown,    comingSoon: true, isNew: true },
 

@@ -77,6 +77,30 @@ async function runTool(
         autoDetect: options.autoDetect ?? true,
       }, onProgress);
     }
+    case 'word-to-pdf': {
+      const { wordToPDF } = await import('@/lib/doc-conversions');
+      return wordToPDF(files[0], onProgress);
+    }
+    case 'excel-to-pdf': {
+      const { excelToPDF } = await import('@/lib/doc-conversions');
+      return excelToPDF(files[0], onProgress);
+    }
+    case 'powerpoint-to-pdf': {
+      const { powerpointToPDF } = await import('@/lib/doc-conversions');
+      return powerpointToPDF(files[0], onProgress);
+    }
+    case 'pdf-to-word': {
+      const { pdfToWord } = await import('@/lib/doc-conversions');
+      return pdfToWord(files[0], onProgress);
+    }
+    case 'pdf-to-excel': {
+      const { pdfToExcel } = await import('@/lib/doc-conversions');
+      return pdfToExcel(files[0], onProgress);
+    }
+    case 'pdf-to-powerpoint': {
+      const { pdfToPowerPoint } = await import('@/lib/doc-conversions');
+      return pdfToPowerPoint(files[0], onProgress);
+    }
     default:
       throw new Error(`Unknown tool: ${toolType}`);
   }

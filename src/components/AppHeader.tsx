@@ -35,11 +35,18 @@ const NAV_SECTIONS: NavSection[] = [
       </svg>
     ),
     items: [
+      { label: 'All PDF Tools', href: '/pdf', description: 'Browse every PDF tool in one place' },
       { label: 'Merge PDFs', href: '/pdf/merge', description: 'Combine multiple PDFs into one document' },
       { label: 'Split PDF', href: '/pdf/split', description: 'Extract pages from a PDF' },
       { label: 'Compress PDF', href: '/pdf/compress', description: 'Reduce PDF file size' },
       { label: 'PDF to Images', href: '/pdf/to-images', description: 'Convert PDF pages to JPG or PNG' },
       { label: 'Images to PDF', href: '/pdf/from-images', description: 'Combine images into a PDF' },
+      { label: 'PDF to Word', href: '/pdf/to-word', description: 'Convert PDF to editable DOCX' },
+      { label: 'PDF to Excel', href: '/pdf/to-excel', description: 'Extract PDF text and tables into XLSX' },
+      { label: 'PDF to PowerPoint', href: '/pdf/to-powerpoint', description: 'Convert PDF pages into PPTX slides' },
+      { label: 'Word to PDF', href: '/pdf/from-word', description: 'Convert DOCX to PDF' },
+      { label: 'Excel to PDF', href: '/pdf/from-excel', description: 'Convert XLSX to PDF' },
+      { label: 'PowerPoint to PDF', href: '/pdf/from-powerpoint', description: 'Convert PPTX to PDF' },
       { label: 'Scan to PDF', href: '/pdf/scan', description: 'Scan document photos with enhancement' },
       { label: 'OCR PDF', href: '/pdf/ocr', description: 'Extract text, create searchable PDFs' },
       { label: 'Rotate PDF', href: '/pdf/rotate', description: 'Rotate pages by 90°, 180°, or 270°' },
@@ -178,31 +185,59 @@ export default function AppHeader() {
 
   return (
     <header className="bg-white border-b border-slate-200 sticky top-0 z-50">
-      <div className="max-w-4xl mx-auto px-4 py-4">
-        <div className="flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-3 group">
+      <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-3.5">
+        <div className="flex items-center justify-between gap-6">
+          {/* Left: logo */}
+          <Link href="/" className="flex items-center gap-3 group shrink-0">
             <div className="w-10 h-10 bg-emerald-500 rounded-xl flex items-center justify-center shadow-sm shadow-emerald-200 group-hover:shadow-md group-hover:shadow-emerald-200 transition-shadow duration-200">
               <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
               </svg>
             </div>
-            <div>
+            <div className="hidden sm:block">
               <h1 className="text-xl font-bold text-slate-900 leading-tight">ConvertTools</h1>
               <p className="text-xs text-slate-500 font-medium">All-in-one daily tools</p>
             </div>
           </Link>
 
-          <nav className="flex items-center gap-2">
-            <div className="hidden sm:flex items-center gap-2 bg-emerald-50 text-emerald-700 text-xs font-semibold px-3 py-1.5 rounded-full border border-emerald-100 mr-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-              100% Free & Private
-            </div>
-            <div className="bg-slate-100 rounded-xl p-1 flex gap-1">
+          {/* Center: menus */}
+          <nav className="flex-1 flex justify-center">
+            <div className="bg-slate-100 rounded-xl p-1 flex gap-1 overflow-x-auto no-scrollbar">
               {NAV_SECTIONS.map((section) => (
                 <NavDropdown key={section.id} section={section} pathname={pathname} />
               ))}
             </div>
           </nav>
+
+          {/* Right: pricing + auth (placeholders) */}
+          <div className="flex items-center gap-2 shrink-0">
+            <Link
+              href="/pricing"
+              className="hidden md:inline-flex items-center gap-1.5 px-3 py-2 text-sm font-semibold text-slate-600 hover:text-slate-900 rounded-lg hover:bg-slate-100 transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              Plans
+            </Link>
+            <button
+              type="button"
+              className="hidden md:inline-flex px-3 py-2 text-sm font-semibold text-slate-600 hover:text-slate-900 rounded-lg hover:bg-slate-100 transition-colors"
+              aria-label="Sign in (coming soon)"
+            >
+              Sign In
+            </button>
+            <button
+              type="button"
+              className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-white bg-emerald-500 hover:bg-emerald-600 rounded-lg shadow-sm shadow-emerald-200 transition-all"
+              aria-label="Sign up (coming soon)"
+            >
+              Sign Up
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+          </div>
         </div>
       </div>
     </header>
