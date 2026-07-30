@@ -1,5 +1,5 @@
-import ToolsDashboard from '@/components/ToolsDashboard';
+import PdfDashboard from '@/components/PdfDashboard';
 
 export default function PdfPage() {
-  return <ToolsDashboard department="pdf" />;
+  return <PdfDashboard />;
 }
