@@ -3,6 +3,7 @@
 import React, { useState, useCallback, useRef } from 'react';
 import { usePdfTool } from '@/hooks/usePdfTool';
 import { formatFileSize } from '@/lib/converters';
+import PdfPreview from './PdfPreview';
 
 export default function PdfWatermark() {
   const [file, setFile] = useState<File | null>(null);
@@ -20,7 +21,6 @@ export default function PdfWatermark() {
     toolType: 'watermark',
     options: {
       text: watermarkType === 'text' ? text : undefined,
-      imagePath: watermarkType === 'image' ? imageFile?.name : undefined,
       opacity,
       rotation,
       position,
@@ -79,6 +79,8 @@ export default function PdfWatermark() {
             </div>
             <button onClick={handleReset} className="text-sm text-slate-500 hover:text-slate-700">Change</button>
           </div>
+
+          <PdfPreview file={file} />
 
           {!result && (
             <>

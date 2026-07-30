@@ -3,13 +3,15 @@
 import React, { useState, useCallback, useRef } from 'react';
 import { usePdfTool } from '@/hooks/usePdfTool';
 import { formatFileSize } from '@/lib/converters';
+import PdfPreview from './PdfPreview';
 
 export default function PdfOCR() {
   const [file, setFile] = useState<File | null>(null);
   const [language, setLanguage] = useState('eng');
   const [outputFormat, setOutputFormat] = useState('searchable-pdf');
   const [ocrText, setOcrText] = useState('');
-  
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+
   const pickRef = useRef<HTMLInputElement>(null);
   const { isProcessing, progress, result, error, process, download, reset } = usePdfTool({
     toolType: 'ocr',
@@ -19,13 +21,21 @@ export default function PdfOCR() {
   const handleFile = useCallback((f: File) => {
     setFile(f);
     setOcrText('');
-  }, []);
+    if (imagePreview) URL.revokeObjectURL(imagePreview);
+    if (f.type.startsWith('image/')) {
+      setImagePreview(URL.createObjectURL(f));
+    } else {
+      setImagePreview(null);
+    }
+  }, [imagePreview]);
 
   const handleReset = useCallback(() => {
     setFile(null);
     setOcrText('');
+    if (imagePreview) URL.revokeObjectURL(imagePreview);
+    setImagePreview(null);
     reset();
-  }, [reset]);
+  }, [reset, imagePreview]);
 
   const handleProcess = useCallback(async () => {
     if (!file) return;
@@ -60,6 +70,17 @@ export default function PdfOCR() {
             </div>
             <button onClick={handleReset} className="text-sm text-slate-500 hover:text-slate-700">Change</button>
           </div>
+
+          {file.type === 'application/pdf' ? (
+            <PdfPreview file={file} />
+          ) : imagePreview ? (
+            <div className="border-t border-slate-100 pt-6">
+              <h3 className="text-sm font-semibold text-slate-700 mb-3">Preview</h3>
+              <div className="flex justify-center bg-slate-50 rounded-xl p-4 border border-slate-100">
+                <img src={imagePreview} alt="Preview" className="max-h-64 w-auto rounded-lg shadow-sm border border-slate-200 bg-white" />
+              </div>
+            </div>
+          ) : null}
 
           {!result && (
             <>

@@ -4,6 +4,7 @@ import React, { useState, useCallback, useRef } from 'react';
 import { usePdfTool } from '@/hooks/usePdfTool';
 import { formatFileSize } from '@/lib/converters';
 import { getPDFMetadata } from '@/lib/pdf-tools';
+import PdfPreview from './PdfPreview';
 
 export default function PdfMetadata() {
   const [file, setFile] = useState<File | null>(null);
@@ -83,6 +84,8 @@ export default function PdfMetadata() {
             </div>
             <button onClick={handleReset} className="text-sm text-slate-500 hover:text-slate-700">Change</button>
           </div>
+
+          <PdfPreview file={file} />
 
           {!result && (
             <>

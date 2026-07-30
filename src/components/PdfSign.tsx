@@ -3,6 +3,7 @@
 import React, { useState, useCallback, useRef } from 'react';
 import { usePdfTool } from '@/hooks/usePdfTool';
 import { formatFileSize } from '@/lib/converters';
+import PdfPreview from './PdfPreview';
 
 function SignaturePad({ onChange }: { onChange: (dataUrl: string | null) => void }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -141,6 +142,8 @@ export default function PdfSign() {
             </div>
             <button onClick={handleReset} className="text-sm text-slate-500 hover:text-slate-700">Change</button>
           </div>
+
+          <PdfPreview file={file} />
 
           {!result && (
             <>

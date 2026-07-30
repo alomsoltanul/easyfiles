@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { usePdfTool } from '@/hooks/usePdfTool';
 import { formatFileSize } from '@/lib/converters';
 
@@ -15,6 +15,9 @@ export default function PdfScanner() {
     toolType: 'scan-to-pdf',
     options: { autoDetect, grayscale, brightness },
   });
+
+  const previews = useMemo(() => files.map((f) => URL.createObjectURL(f)), [files]);
+  useEffect(() => () => { for (const u of previews) URL.revokeObjectURL(u); }, [previews]);
 
   const handleFiles = useCallback((newFiles: File[]) => {
     const images = newFiles.filter(f => /image\//.test(f.type));
@@ -78,6 +81,7 @@ export default function PdfScanner() {
                       <button onClick={() => i < files.length - 1 && moveFile(i, i + 1)} disabled={i === files.length - 1} className="text-slate-400 hover:text-slate-600 disabled:opacity-30"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg></button>
                     </div>
                     <span className="text-xs font-bold text-slate-400 w-6">{i + 1}</span>
+                    <img src={previews[i]} alt={file.name} className="w-12 h-12 object-cover rounded-lg border border-slate-200 bg-white flex-shrink-0" />
                     <div className="flex-1 min-w-0"><p className="text-sm font-medium text-slate-800 truncate">{file.name}</p><p className="text-xs text-slate-500">{formatFileSize(file.size)}</p></div>
                     <button onClick={() => removeFile(i)} className="text-slate-400 hover:text-red-500"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
                   </div>

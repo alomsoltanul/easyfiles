@@ -92,21 +92,26 @@ async function zipOutputs(outputs: ToolOutput[], zipName: string): Promise<ToolO
   return { blob, name: zipName };
 }
 
+export interface ToolResult {
+  url: string;
+  name: string;
+  size: number;
+}
+
 export function usePdfTool({ toolType, options = {} }: UsePdfToolOptions) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [result, setResult] = useState<{ url: string; name: string; size: number } | null>(null);
+  const [result, setResult] = useState<ToolResult | null>(null);
+  const [outputs, setOutputs] = useState<ToolResult[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const urlRef = useRef<string | null>(null);
+  const urlsRef = useRef<string[]>([]);
 
-  const releaseUrl = useCallback(() => {
-    if (urlRef.current) {
-      URL.revokeObjectURL(urlRef.current);
-      urlRef.current = null;
-    }
+  const releaseUrls = useCallback(() => {
+    for (const u of urlsRef.current) URL.revokeObjectURL(u);
+    urlsRef.current = [];
   }, []);
 
-  useEffect(() => releaseUrl, [releaseUrl]);
+  useEffect(() => releaseUrls, [releaseUrls]);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const process = useCallback(async (files: File[], overrides?: Record<string, any>) => {
@@ -114,34 +119,43 @@ export function usePdfTool({ toolType, options = {} }: UsePdfToolOptions) {
     setIsProcessing(true);
     setProgress(0);
     setResult(null);
+    setOutputs([]);
     setError(null);
 
     try {
       const merged = overrides ? { ...options, ...overrides } : options;
       const output = await runTool(toolType, files, merged, (p) => setProgress(Math.min(100, p)));
 
+      releaseUrls();
+
+      const items: ToolOutput[] = Array.isArray(output) ? output : [output];
+      if (items.length === 0) throw new Error('No output produced');
+
+      const perItem: ToolResult[] = items.map((o) => {
+        const url = URL.createObjectURL(o.blob);
+        urlsRef.current.push(url);
+        return { url, name: o.name, size: o.blob.size };
+      });
+      setOutputs(perItem);
+
       let final: ToolOutput;
-      if (Array.isArray(output)) {
-        if (output.length === 0) throw new Error('No output produced');
-        final = output.length === 1
-          ? output[0]
-          : await zipOutputs(output, `${files[0].name.replace(/\.[^.]+$/, '')}-${toolType}.zip`);
+      if (items.length === 1) {
+        final = items[0];
       } else {
-        final = output;
+        final = await zipOutputs(items, `${files[0].name.replace(/\.[^.]+$/, '')}-${toolType}.zip`);
       }
 
-      releaseUrl();
-      const url = URL.createObjectURL(final.blob);
-      urlRef.current = url;
+      const finalUrl = items.length === 1 ? perItem[0].url : URL.createObjectURL(final.blob);
+      if (items.length !== 1) urlsRef.current.push(finalUrl);
       setProgress(100);
-      setResult({ url, name: final.name, size: final.blob.size });
+      setResult({ url: finalUrl, name: final.name, size: final.blob.size });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Processing failed');
     } finally {
       setIsProcessing(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [toolType, JSON.stringify(options), releaseUrl]);
+  }, [toolType, JSON.stringify(options), releaseUrls]);
 
   const download = useCallback(async () => {
     if (!result) return;
@@ -154,17 +168,19 @@ export function usePdfTool({ toolType, options = {} }: UsePdfToolOptions) {
   }, [result]);
 
   const reset = useCallback(() => {
-    releaseUrl();
+    releaseUrls();
     setIsProcessing(false);
     setProgress(0);
     setResult(null);
+    setOutputs([]);
     setError(null);
-  }, [releaseUrl]);
+  }, [releaseUrls]);
 
   return {
     isProcessing,
     progress,
     result,
+    outputs,
     error,
     process,
     download,

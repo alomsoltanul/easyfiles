@@ -1,17 +1,35 @@
 'use client';
 
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { usePdfTool } from '@/hooks/usePdfTool';
 import { formatFileSize } from '@/lib/converters';
+import { renderPDFPage } from '@/lib/pdf-render';
 
 export default function PdfMerger() {
   const [files, setFiles] = useState<File[]>([]);
+  const [thumbs, setThumbs] = useState<Record<string, string>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dragRef = useRef<HTMLDivElement>(null);
-  
+
   const { isProcessing, progress, result, error, process, download, reset } = usePdfTool({
     toolType: 'merge',
   });
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      for (const f of files) {
+        const key = `${f.name}-${f.size}-${f.lastModified}`;
+        if (thumbs[key]) continue;
+        try {
+          const t = await renderPDFPage(f, 1, 0.5);
+          if (cancelled) return;
+          setThumbs(prev => ({ ...prev, [key]: t }));
+        } catch { /* ignore */ }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [files, thumbs]);
 
   const handleFilesAdded = useCallback((newFiles: File[]) => {
     const pdfs = newFiles.filter(f => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
@@ -88,6 +106,11 @@ export default function PdfMerger() {
                       <button onClick={() => index < files.length - 1 && moveFile(index, index + 1)} disabled={index === files.length - 1} className="text-slate-400 hover:text-slate-600 disabled:opacity-30"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg></button>
                     </div>
                     <span className="text-xs font-bold text-slate-400 w-6">{index + 1}</span>
+                    {thumbs[`${file.name}-${file.size}-${file.lastModified}`] ? (
+                      <img src={thumbs[`${file.name}-${file.size}-${file.lastModified}`]} alt={file.name} className="w-10 h-12 object-cover rounded border border-slate-200 bg-white flex-shrink-0" />
+                    ) : (
+                      <div className="w-10 h-12 rounded border border-slate-200 bg-slate-100 flex-shrink-0" />
+                    )}
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-slate-800 truncate">{file.name}</p>
                       <p className="text-xs text-slate-500">{formatFileSize(file.size)}</p>

@@ -3,6 +3,7 @@
 import React, { useState, useCallback, useRef } from 'react';
 import { usePdfTool } from '@/hooks/usePdfTool';
 import { formatFileSize } from '@/lib/converters';
+import PdfPreview from './PdfPreview';
 
 export default function PdfProtect() {
   const [file, setFile] = useState<File | null>(null);
@@ -70,6 +71,8 @@ export default function PdfProtect() {
             </div>
             <button onClick={handleReset} className="text-sm text-slate-500 hover:text-slate-700">Change</button>
           </div>
+
+          <PdfPreview file={file} />
 
           {!result && (
             <>

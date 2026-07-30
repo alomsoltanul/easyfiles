@@ -3,6 +3,7 @@
 import React, { useState, useCallback, useRef } from 'react';
 import { usePdfTool } from '@/hooks/usePdfTool';
 import { formatFileSize } from '@/lib/converters';
+import PdfPreview from './PdfPreview';
 
 export default function PdfToImages() {
   const [file, setFile] = useState<File | null>(null);
@@ -10,7 +11,7 @@ export default function PdfToImages() {
   const [dpi, setDpi] = useState(150);
   const inputRef = useRef<HTMLInputElement>(null);
   
-  const { isProcessing, result, error, process, download, reset } = usePdfTool({
+  const { isProcessing, progress, result, outputs, error, process, download, reset } = usePdfTool({
     toolType: format === 'jpeg' ? 'pdf-to-jpg' : 'pdf-to-png',
     options: { format, dpi },
   });
@@ -59,6 +60,8 @@ export default function PdfToImages() {
             <button onClick={handleReset} className="text-sm text-slate-500 hover:text-slate-700">Change</button>
           </div>
 
+          <PdfPreview file={file} />
+
           {!result && (
             <>
               <div className="border-t border-slate-100 pt-6">
@@ -92,7 +95,7 @@ export default function PdfToImages() {
               <div className="border-t border-slate-100 pt-6">
                 <button onClick={handleConvert} disabled={isProcessing}
                   className="w-full bg-emerald-500 hover:bg-emerald-600 disabled:bg-emerald-300 text-white font-bold py-3.5 rounded-xl transition-all shadow-sm shadow-emerald-200">
-                  {isProcessing ? 'Converting...' : 'Convert to Images'}
+                  {isProcessing ? `Converting... ${progress}%` : 'Convert to Images'}
                 </button>
               </div>
             </>
@@ -106,16 +109,35 @@ export default function PdfToImages() {
                 </div>
                 <div>
                   <h2 className="text-lg font-bold text-slate-800">Images Ready!</h2>
-                  <p className="text-sm text-slate-500">{format.toUpperCase()} format</p>
+                  <p className="text-sm text-slate-500">{outputs.length} {format.toUpperCase()} {outputs.length === 1 ? 'image' : 'images'}</p>
                 </div>
               </div>
+
+              {outputs.length > 0 && (
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 max-h-96 overflow-y-auto p-1">
+                  {outputs.map((o, i) => (
+                    <a key={o.url} href={o.url} download={o.name}
+                      className="group relative rounded-xl border border-slate-200 overflow-hidden bg-white hover:border-emerald-400 hover:shadow-sm transition-all">
+                      <img src={o.url} alt={o.name} className="w-full h-auto block" />
+                      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <p className="text-[10px] text-white font-medium truncate">Page {i + 1}</p>
+                        <p className="text-[10px] text-white/80">{formatFileSize(o.size)}</p>
+                      </div>
+                    </a>
+                  ))}
+                </div>
+              )}
+
               <div className="bg-slate-50 rounded-xl p-4 border flex items-center justify-between">
                 <div>
                   <p className="font-semibold text-slate-800">{result.name}</p>
-                  <p className="text-xs text-slate-500">{formatFileSize(result.size)}</p>
+                  <p className="text-xs text-slate-500">{formatFileSize(result.size)}{outputs.length > 1 ? ' · bundled zip' : ''}</p>
                 </div>
                 <button onClick={download}
-                  className="text-emerald-600 hover:text-emerald-700 text-sm font-semibold">Download</button>
+                  className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold rounded-lg text-sm transition-colors flex items-center gap-2">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                  Download {outputs.length > 1 ? 'All' : ''}
+                </button>
               </div>
               <button onClick={handleReset} className="w-full py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl">Convert Another</button>
             </div>
