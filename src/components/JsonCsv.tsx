@@ -115,35 +115,37 @@ export default function JsonCsv() {
         ))}
       </div>
 
-      {tab === 'json-to-csv' ? (
-        <>
-          <CodeEditor
-            value={jsonInput}
-            onChange={setJsonInput}
-            placeholder='Paste JSON array, e.g. [{"name":"John","age":30}]'
-            label="JSON Input"
-            error={jsonResult.error}
-            rows={12}
-          />
-          {jsonResult.output && (
-            <CodeOutput value={jsonResult.output} label="CSV Output" downloadFileName="output.csv" />
-          )}
-        </>
-      ) : (
-        <>
-          <CodeEditor
-            value={csvInput}
-            onChange={setCsvInput}
-            placeholder="Paste CSV, e.g.\nname,age\nJohn,30"
-            label="CSV Input"
-            error={csvResult.error}
-            rows={12}
-          />
-          {csvResult.output && (
-            <CodeOutput value={csvResult.output} label="JSON Output" downloadFileName="output.json" />
-          )}
-        </>
-      )}
+      <div className="grid lg:grid-cols-2 gap-6">
+        {tab === 'json-to-csv' ? (
+          <>
+            <CodeEditor
+              value={jsonInput}
+              onChange={setJsonInput}
+              placeholder='Paste JSON array, e.g. [{"name":"John","age":30}]'
+              label="JSON Input"
+              error={jsonResult.error}
+              rows={12}
+            />
+            {jsonResult.output && (
+              <CodeOutput value={jsonResult.output} label="CSV Output" downloadFileName="output.csv" />
+            )}
+          </>
+        ) : (
+          <>
+            <CodeEditor
+              value={csvInput}
+              onChange={setCsvInput}
+              placeholder={"Paste CSV, e.g.\nname,age\nJohn,30"}
+              label="CSV Input"
+              error={csvResult.error}
+              rows={12}
+            />
+            {csvResult.output && (
+              <CodeOutput value={csvResult.output} label="JSON Output" downloadFileName="output.json" />
+            )}
+          </>
+        )}
+      </div>
     </div>
   );
 }

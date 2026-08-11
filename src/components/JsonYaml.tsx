@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState } from 'react';
 import CodeEditor from './CodeEditor';
 import CodeOutput from './CodeOutput';
 
@@ -15,39 +15,6 @@ async function loadYaml() {
   return yamlModule;
 }
 
-function jsonToYamlSync(json: string): string {
-  const obj = JSON.parse(json);
-  let result = '';
-  function emit(key: string | null, value: unknown, indent: number) {
-    const pad = '  '.repeat(indent);
-    if (value === null) {
-      result += `${pad}${key}: null\n`;
-    } else if (typeof value === 'boolean') {
-      result += `${pad}${key}: ${value}\n`;
-    } else if (typeof value === 'number') {
-      result += `${pad}${key}: ${value}\n`;
-    } else if (typeof value === 'string') {
-      const needsQuotes = /[:{}\[\],&*#?|\-<>=!%@`]/.test(value[0]) || value.includes(': ') || value.includes('#');
-      const val = needsQuotes ? `"${value.replace(/"/g, '\\"')}"` : value;
-      result += `${pad}${key !== null ? key + ': ' : '-'}${val}\n`;
-    } else if (Array.isArray(value)) {
-      if (key !== null) result += `${pad}${key}:\n`;
-      value.forEach((item) => emit(null, item, indent + 1));
-    } else if (typeof value === 'object') {
-      if (key !== null) result += `${pad}${key}:\n`;
-      Object.entries(value as Record<string, unknown>).forEach(([k, v]) => emit(k, v, indent + 1));
-    }
-  }
-  if (typeof obj === 'object' && obj !== null) {
-    if (Array.isArray(obj)) {
-      obj.forEach((item) => emit(null, item, 0));
-    } else {
-      Object.entries(obj as Record<string, unknown>).forEach(([k, v]) => emit(k, v, 0));
-    }
-  }
-  return result.trimEnd();
-}
-
 export default function JsonYaml() {
   const [tab, setTab] = useState<YamlTab>('json-to-yaml');
   const [jsonInput, setJsonInput] = useState('');
@@ -57,15 +24,20 @@ export default function JsonYaml() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const handleJsonChange = (val: string) => {
+  const handleJsonChange = async (val: string) => {
     setJsonInput(val);
     setError(null);
     if (!val.trim()) { setYamlOutput(''); return; }
+    setLoading(true);
     try {
-      setYamlOutput(jsonToYamlSync(val));
+      const obj = JSON.parse(val);
+      const yaml = await loadYaml();
+      setYamlOutput(yaml.dump(obj, { indent: 2, lineWidth: 120, noRefs: true }));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Invalid JSON');
       setYamlOutput('');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -103,18 +75,21 @@ export default function JsonYaml() {
         ))}
       </div>
 
-      {tab === 'json-to-yaml' ? (
-        <>
-          <CodeEditor value={jsonInput} onChange={handleJsonChange} placeholder='Paste JSON, e.g. {"name":"John"}' label="JSON Input" error={error} rows={12} />
-          {yamlOutput && <CodeOutput value={yamlOutput} label="YAML Output" downloadFileName="output.yaml" />}
-        </>
-      ) : (
-        <>
-          <CodeEditor value={yamlInput} onChange={handleYamlChange} placeholder="Paste YAML, e.g.\nname: John" label="YAML Input" error={error} rows={12} />
-          {loading && <p className="text-sm text-slate-500">Parsing YAML...</p>}
-          {jsonOutput && <CodeOutput value={jsonOutput} label="JSON Output" downloadFileName="output.json" />}
-        </>
-      )}
+      {loading && <p className="text-sm text-slate-500">Converting...</p>}
+
+      <div className="grid lg:grid-cols-2 gap-6">
+        {tab === 'json-to-yaml' ? (
+          <>
+            <CodeEditor value={jsonInput} onChange={handleJsonChange} placeholder='Paste JSON, e.g. {"name":"John"}' label="JSON Input" error={error} rows={12} />
+            {yamlOutput && <CodeOutput value={yamlOutput} label="YAML Output" downloadFileName="output.yaml" />}
+          </>
+        ) : (
+          <>
+            <CodeEditor value={yamlInput} onChange={handleYamlChange} placeholder={"Paste YAML, e.g.\nname: John"} label="YAML Input" error={error} rows={12} />
+            {jsonOutput && <CodeOutput value={jsonOutput} label="JSON Output" downloadFileName="output.json" />}
+          </>
+        )}
+      </div>
     </div>
   );
 }

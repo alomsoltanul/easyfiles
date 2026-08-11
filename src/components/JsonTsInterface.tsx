@@ -4,26 +4,57 @@ import React, { useState, useMemo } from 'react';
 import CodeEditor from './CodeEditor';
 import CodeOutput from './CodeOutput';
 
-function generateTsInterface(name: string, data: unknown, indent: string = ''): string {
-  if (data === null) return `${indent}null`;
-  if (data instanceof Array) {
-    if (data.length === 0) return `${indent}unknown[]`;
-    const types = data.map((item) => generateTsInterface('', item, ''));
-    const unique = [...new Set(types)];
-    const inner = unique.length === 1 ? unique[0] : unique.join(' | ');
-    return `${indent}(${inner})[]`;
+const VALID_KEY = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
+
+function quoteKey(k: string): string {
+  return VALID_KEY.test(k) ? k : JSON.stringify(k);
+}
+
+type Ctx = { collected: Map<string, string>; counter: { n: number } };
+
+function inferType(value: unknown, suggestedName: string, indent: string, ctx: Ctx): string {
+  if (value === null) return 'null';
+  if (Array.isArray(value)) {
+    if (value.length === 0) return 'unknown[]';
+    const itemTypes = value.map((v) => inferType(v, suggestedName, indent, ctx));
+    const unique = [...new Set(itemTypes)];
+    if (unique.length === 1) return `${unique[0]}[]`;
+    return `(${unique.join(' | ')})[]`;
   }
-  if (typeof data === 'object') {
-    const entries = Object.entries(data as Record<string, unknown>);
-    if (entries.length === 0) return `${indent}{}`;
-    const fields = entries.map(([key, value]) => {
-      const type = generateTsInterface(key, value, '');
-      const optional = key.includes('_') || false;
-      return `${indent}  ${key}${optional ? '?' : ''}: ${type};`;
-    });
-    return `{\n${fields.join('\n')}\n${indent}}`;
+  if (typeof value === 'object') {
+    return inferObject(value as Record<string, unknown>, suggestedName, indent, ctx);
   }
-  return `${indent}${typeof data}`;
+  if (typeof value === 'string') return 'string';
+  if (typeof value === 'number') return 'number';
+  if (typeof value === 'boolean') return 'boolean';
+  return 'unknown';
+}
+
+function inferObject(obj: Record<string, unknown>, name: string, indent: string, ctx: Ctx): string {
+  const entries = Object.entries(obj);
+  if (entries.length === 0) return 'Record<string, unknown>';
+  const next = indent + '  ';
+  const fields = entries.map(([key, value]) => {
+    const optional = value === null;
+    const type = inferType(value, key, next, ctx);
+    return `${next}${quoteKey(key)}${optional ? '?' : ''}: ${type};`;
+  });
+  return `{\n${fields.join('\n')}\n${indent}}`;
+}
+
+function generate(rootName: string, data: unknown, keyword: 'interface' | 'type'): string {
+  const ctx: Ctx = { collected: new Map(), counter: { n: 0 } };
+  if (Array.isArray(data)) {
+    const itemType = inferType(data[0] ?? {}, rootName, '', ctx);
+    return `export ${keyword} ${rootName} ${keyword === 'type' ? '= ' : ''}${itemType}[]${keyword === 'type' ? ';' : ''}`;
+  }
+  if (data === null || typeof data !== 'object') {
+    const t = inferType(data, rootName, '', ctx);
+    return `export type ${rootName} = ${t};`;
+  }
+  const body = inferObject(data as Record<string, unknown>, rootName, '', ctx);
+  if (keyword === 'interface') return `export interface ${rootName} ${body}`;
+  return `export type ${rootName} = ${body};`;
 }
 
 export default function JsonTsInterface() {
@@ -35,12 +66,8 @@ export default function JsonTsInterface() {
     if (!input.trim()) return { output: '', error: null };
     try {
       const obj = JSON.parse(input);
-      const keyword = useType ? 'type' : 'interface';
-      const body = generateTsInterface(interfaceName, obj, '  ');
-      if (body.startsWith('{')) {
-        return { output: `export ${keyword} ${interfaceName} ${body}`, error: null };
-      }
-      return { output: `export ${keyword} ${interfaceName} = ${body};`, error: null };
+      const safeName = interfaceName.trim() || 'Root';
+      return { output: generate(safeName, obj, useType ? 'type' : 'interface'), error: null };
     } catch (e) {
       return { output: '', error: e instanceof Error ? e.message : 'Invalid JSON' };
     }
@@ -74,18 +101,20 @@ export default function JsonTsInterface() {
         </div>
       </div>
 
-      <CodeEditor
-        value={input}
-        onChange={setInput}
-        placeholder='Paste JSON, e.g. {"name":"John","age":30,"items":[{"id":1}]}'
-        label="JSON Input"
-        error={error}
-        rows={12}
-      />
+      <div className="grid lg:grid-cols-2 gap-6">
+        <CodeEditor
+          value={input}
+          onChange={setInput}
+          placeholder='Paste JSON, e.g. {"name":"John","age":30,"items":[{"id":1}]}'
+          label="JSON Input"
+          error={error}
+          rows={12}
+        />
 
-      {output && (
-        <CodeOutput value={output} label="TypeScript Output" languageLabel="typescript" downloadFileName={`${interfaceName}.ts`} />
-      )}
+        {output && (
+          <CodeOutput value={output} label="TypeScript Output" languageLabel="typescript" downloadFileName={`${interfaceName}.ts`} />
+        )}
+      </div>
     </div>
   );
 }

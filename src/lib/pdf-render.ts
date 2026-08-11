@@ -30,6 +30,34 @@ async function renderPage(
   return canvas;
 }
 
+/** Render a single page to a live canvas (caller owns it). */
+export async function renderPageToCanvas(
+  file: File,
+  pageNum: number,
+  scale: number = 1.5
+): Promise<HTMLCanvasElement> {
+  const pdfjs = await getPDFJS();
+  const bytes = await file.arrayBuffer();
+  const pdf = await pdfjs.getDocument({ data: bytes }).promise;
+  return renderPage(pdf, pageNum, scale);
+}
+
+/** Page geometry as pdf.js sees it — unrotated size plus the /Rotate value. */
+export async function getPageGeometry(
+  file: File
+): Promise<{ width: number; height: number; rotation: number }[]> {
+  const pdfjs = await getPDFJS();
+  const bytes = await file.arrayBuffer();
+  const pdf = await pdfjs.getDocument({ data: bytes }).promise;
+  const out: { width: number; height: number; rotation: number }[] = [];
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const vp = page.getViewport({ scale: 1, rotation: 0 });
+    out.push({ width: vp.width, height: vp.height, rotation: page.rotate ?? 0 });
+  }
+  return out;
+}
+
 export async function renderPDFPage(file: File, pageNum: number, scale: number = 1.5): Promise<string> {
   const pdfjs = await getPDFJS();
   const bytes = await file.arrayBuffer();

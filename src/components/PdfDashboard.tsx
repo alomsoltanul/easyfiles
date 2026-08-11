@@ -245,22 +245,24 @@ const TOOLS: Tool[] = [
   { label: 'PowerPoint to PDF', href: '/pdf/from-powerpoint', description: 'Convert PPT and PPTX slideshows into PDF.',                          category: 'convert', icon: ICONS.powerpoint },
   { label: 'Excel to PDF',      href: '/pdf/from-excel',      description: 'Convert XLSX and CSV spreadsheets into PDF.',                        category: 'convert', icon: ICONS.excel },
 
+  // Advanced tools
+  { label: 'HTML to PDF',       href: '/pdf/from-html',    description: 'Convert webpages in HTML to PDF — paste a URL and export in one click.',              category: 'convert',      icon: ICONS.html },
+  { label: 'PDF to Markdown',   href: '/pdf/to-markdown',  description: 'Turn PDFs into Markdown. Perfect for notes, docs, and LLMs — headings preserved.',    category: 'convert',      icon: ICONS.markdown,    isNew: true },
+
+  { label: 'Edit PDF',          href: '/pdf/edit',         description: 'Add text, images, shapes, or freehand annotations. Change font, size, and color.',    category: 'edit',         icon: ICONS.edit },
+  { label: 'Page Numbers',      href: '/pdf/page-numbers', description: 'Add page numbers to PDFs — pick position, dimensions, and typography.',               category: 'edit',         icon: ICONS.pageNumbers },
+  { label: 'Crop PDF',          href: '/pdf/crop',         description: 'Crop margins or select specific areas, then apply to one page or the whole doc.',      category: 'edit',         icon: ICONS.crop },
+  { label: 'Organize PDF',      href: '/pdf/organize',     description: 'Sort, delete, and insert pages in one unified page manager view.',                     category: 'organize',     icon: ICONS.organize },
+
+  { label: 'PDF to PDF/A',      href: '/pdf/to-pdfa',      description: 'Convert to PDF/A, the ISO-standard for long-term archival preservation.',              category: 'optimize',     icon: ICONS.pdfa },
+  { label: 'Repair PDF',        href: '/pdf/repair',       description: 'Recover data from damaged or corrupt PDF files.',                                       category: 'optimize',     icon: ICONS.repair },
+
+  { label: 'Redact PDF',        href: '/pdf/redact',       description: 'Permanently remove sensitive text and graphics from a PDF.',                            category: 'security',     icon: ICONS.redact },
+  { label: 'PDF Forms',         href: '/pdf/forms',        description: 'Detect fields, create fillable PDFs, or fill forms — text, checkboxes, lists.',        category: 'edit',         icon: ICONS.forms,       isNew: true },
+
+  { label: 'Compare PDF',       href: '/pdf/compare',      description: 'Side-by-side comparison — spot changes between document versions.',                    category: 'intelligence', icon: ICONS.compare },
+
   // --- Coming soon ---
-  { label: 'HTML to PDF',       href: '#', description: 'Convert webpages in HTML to PDF — paste a URL and export in one click.',              category: 'convert',      icon: ICONS.html,        comingSoon: true },
-  { label: 'PDF to Markdown',   href: '#', description: 'Turn PDFs into Markdown. Perfect for notes, docs, and LLMs — headings preserved.',    category: 'convert',      icon: ICONS.markdown,    comingSoon: true, isNew: true },
-
-  { label: 'Edit PDF',          href: '#', description: 'Add text, images, shapes, or freehand annotations. Change font, size, and color.',    category: 'edit',         icon: ICONS.edit,        comingSoon: true },
-  { label: 'Page Numbers',      href: '#', description: 'Add page numbers to PDFs — pick position, dimensions, and typography.',               category: 'edit',         icon: ICONS.pageNumbers, comingSoon: true },
-  { label: 'Crop PDF',          href: '#', description: 'Crop margins or select specific areas, then apply to one page or the whole doc.',      category: 'edit',         icon: ICONS.crop,        comingSoon: true },
-  { label: 'Organize PDF',      href: '#', description: 'Sort, delete, and insert pages in one unified page manager view.',                     category: 'organize',     icon: ICONS.organize,    comingSoon: true },
-
-  { label: 'PDF to PDF/A',      href: '#', description: 'Convert to PDF/A, the ISO-standard for long-term archival preservation.',              category: 'optimize',     icon: ICONS.pdfa,        comingSoon: true },
-  { label: 'Repair PDF',        href: '#', description: 'Recover data from damaged or corrupt PDF files.',                                       category: 'optimize',     icon: ICONS.repair,      comingSoon: true },
-
-  { label: 'Redact PDF',        href: '#', description: 'Permanently remove sensitive text and graphics from a PDF.',                            category: 'security',     icon: ICONS.redact,      comingSoon: true },
-  { label: 'PDF Forms',         href: '#', description: 'Detect fields, create fillable PDFs, or fill forms — text, checkboxes, lists.',        category: 'edit',         icon: ICONS.forms,       comingSoon: true, isNew: true },
-
-  { label: 'Compare PDF',       href: '#', description: 'Side-by-side comparison — spot changes between document versions.',                    category: 'intelligence', icon: ICONS.compare,     comingSoon: true },
   { label: 'AI Summarizer',     href: '#', description: 'Generate concise summaries from articles and long PDFs in seconds.',                   category: 'intelligence', icon: ICONS.ai,          comingSoon: true, isNew: true },
   { label: 'Translate PDF',     href: '#', description: 'Translate PDFs with AI — fonts, layout, and formatting stay intact.',                  category: 'intelligence', icon: ICONS.translate,   comingSoon: true, isNew: true },
 

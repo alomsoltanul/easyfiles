@@ -218,6 +218,61 @@ const ALL_TOOLS: Tool[] = [
     icon: SVG_PDF, department: 'pdf',
   },
   {
+    label: 'Edit PDF', href: '/pdf/edit', route: 'edit',
+    description: 'Add text, images, shapes, highlights and freehand annotations to any page',
+    icon: SVG_PDF, department: 'pdf',
+  },
+  {
+    label: 'Page Numbers', href: '/pdf/page-numbers', route: 'page-numbers',
+    description: 'Add page numbers with custom position, format, numerals and typography',
+    icon: SVG_PDF, department: 'pdf',
+  },
+  {
+    label: 'Crop PDF', href: '/pdf/crop', route: 'crop',
+    description: 'Trim margins or crop to a selected area, with automatic content detection',
+    icon: SVG_PDF, department: 'pdf',
+  },
+  {
+    label: 'Organize PDF', href: '/pdf/organize', route: 'organize',
+    description: 'Sort, rotate, duplicate, delete and insert pages in one page manager',
+    icon: SVG_PDF, department: 'pdf',
+  },
+  {
+    label: 'Redact PDF', href: '/pdf/redact', route: 'redact',
+    description: 'Permanently remove sensitive text and graphics — not just cover them up',
+    icon: SVG_PDF, department: 'pdf',
+  },
+  {
+    label: 'PDF Forms', href: '/pdf/forms', route: 'forms',
+    description: 'Detect and fill AcroForm fields, or draw new fillable fields onto a PDF',
+    icon: SVG_PDF, department: 'pdf',
+  },
+  {
+    label: 'Compare PDF', href: '/pdf/compare', route: 'compare',
+    description: 'Compare two PDFs with a pixel difference overlay and a word-level text diff',
+    icon: SVG_PDF, department: 'pdf',
+  },
+  {
+    label: 'Repair PDF', href: '/pdf/repair', route: 'repair',
+    description: 'Diagnose and recover damaged, truncated or unreadable PDF files',
+    icon: SVG_PDF, department: 'pdf',
+  },
+  {
+    label: 'PDF to PDF/A', href: '/pdf/to-pdfa', route: 'to-pdfa',
+    description: 'Convert to PDF/A for archiving, with an embedded sRGB output intent',
+    icon: SVG_PDF, department: 'pdf',
+  },
+  {
+    label: 'PDF to Markdown', href: '/pdf/to-markdown', route: 'to-markdown',
+    description: 'Convert PDF text into Markdown with headings, lists and tables preserved',
+    icon: SVG_PDF, department: 'pdf',
+  },
+  {
+    label: 'HTML to PDF', href: '/pdf/from-html', route: 'from-html',
+    description: 'Convert a web page, pasted HTML or an .html file into a paginated PDF',
+    icon: SVG_PDF, department: 'pdf',
+  },
+  {
     label: 'Video Downloader', href: '/video', route: 'download',
     description: 'Download videos and audio from YouTube, Facebook, Instagram, X (Twitter)',
     icon: SVG_VIDEO, department: 'video',

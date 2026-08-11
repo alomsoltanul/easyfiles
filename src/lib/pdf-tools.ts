@@ -1,35 +1,8 @@
 import { PDFDocument, degrees, rgb, StandardFonts } from '@cantoo/pdf-lib';
+import { toBlob, baseName, loadPdf } from './pdf-common';
+import type { ToolOutput, ProgressFn } from './pdf-common';
 
-export interface ToolOutput {
-  blob: Blob;
-  name: string;
-}
-
-export type ProgressFn = (percent: number) => void;
-
-function toBlob(bytes: Uint8Array, type = 'application/pdf'): Blob {
-  const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
-  return new Blob([buffer], { type });
-}
-
-function baseName(file: File): string {
-  return file.name.replace(/\.[^.]+$/, '');
-}
-
-async function loadPdf(file: File, password?: string): Promise<PDFDocument> {
-  const bytes = await file.arrayBuffer();
-  try {
-    return await PDFDocument.load(bytes, {
-      ignoreEncryption: true,
-      ...(password ? { password } : {}),
-    });
-  } catch (err) {
-    if (err instanceof Error && /password|encrypt/i.test(err.message)) {
-      throw new Error('This PDF is password-protected. Use the Unlock tool first.');
-    }
-    throw err;
-  }
-}
+export type { ToolOutput, ProgressFn } from './pdf-common';
 
 // ---------- merge ----------
 

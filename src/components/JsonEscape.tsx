@@ -10,15 +10,19 @@ export default function JsonEscape() {
   const [tab, setTab] = useState<EscapeTab>('escape');
   const [input, setInput] = useState('');
 
-  const output = useMemo(() => {
-    if (!input.trim()) return '';
+  const { output, error } = useMemo(() => {
+    if (!input.trim()) return { output: '', error: null as string | null };
     if (tab === 'escape') {
-      return JSON.stringify(input);
+      const escaped = JSON.stringify(input);
+      return { output: escaped.slice(1, -1), error: null };
     }
     try {
-      return JSON.parse(input);
-    } catch {
-      return 'Invalid escaped string';
+      const trimmed = input.trim();
+      const wrapped = trimmed.startsWith('"') && trimmed.endsWith('"') ? trimmed : `"${input.replace(/"/g, '\\"')}"`;
+      const parsed = JSON.parse(wrapped);
+      return { output: String(parsed), error: null };
+    } catch (e) {
+      return { output: '', error: e instanceof Error ? e.message : 'Invalid escaped string' };
     }
   }, [input, tab]);
 
@@ -39,21 +43,24 @@ export default function JsonEscape() {
         ))}
       </div>
 
-      <CodeEditor
-        value={input}
-        onChange={setInput}
-        placeholder={tab === 'escape' ? 'Enter text to escape for JSON...' : 'Paste escaped JSON string to unescape...'}
-        label={tab === 'escape' ? 'Raw Text' : 'Escaped String'}
-        rows={10}
-      />
-
-      {output && (
-        <CodeOutput
-          value={output}
-          label={tab === 'escape' ? 'Escaped String' : 'Unescaped Text'}
-          downloadFileName={tab === 'escape' ? 'escaped.json' : 'unescaped.txt'}
+      <div className="grid lg:grid-cols-2 gap-6">
+        <CodeEditor
+          value={input}
+          onChange={setInput}
+          placeholder={tab === 'escape' ? 'Enter text to escape for JSON...' : 'Paste escaped JSON string to unescape...'}
+          label={tab === 'escape' ? 'Raw Text' : 'Escaped String'}
+          error={error}
+          rows={10}
         />
-      )}
+
+        {output && (
+          <CodeOutput
+            value={output}
+            label={tab === 'escape' ? 'Escaped String' : 'Unescaped Text'}
+            downloadFileName={tab === 'escape' ? 'escaped.json' : 'unescaped.txt'}
+          />
+        )}
+      </div>
     </div>
   );
 }

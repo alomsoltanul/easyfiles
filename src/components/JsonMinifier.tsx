@@ -23,24 +23,27 @@ export default function JsonMinifier() {
 
   return (
     <div className="space-y-6">
-      <CodeEditor
-        value={input}
-        onChange={setInput}
-        placeholder="Paste JSON to minify..."
-        label="JSON Input"
-        error={error}
-        rows={12}
-      />
+      <div className="grid lg:grid-cols-2 gap-6">
+        <CodeEditor
+          value={input}
+          onChange={setInput}
+          placeholder="Paste JSON to minify..."
+          label="JSON Input"
+          error={error}
+          rows={12}
+        />
 
-      {minified && (
-        <>
-          <SizeComparison originalSize={originalSize} convertedSize={minifiedSize} />
+        {minified && (
           <CodeOutput
             value={minified}
             label="Minified JSON"
             downloadFileName="minified.json"
           />
-        </>
+        )}
+      </div>
+
+      {minified && (
+        <SizeComparison originalSize={originalSize} convertedSize={minifiedSize} />
       )}
     </div>
   );

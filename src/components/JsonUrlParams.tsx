@@ -65,35 +65,37 @@ export default function JsonUrlParams() {
         ))}
       </div>
 
-      {tab === 'params-to-json' ? (
-        <>
-          <CodeEditor
-            value={paramsInput}
-            onChange={setParamsInput}
-            placeholder="Paste URL params, e.g. ?name=John&age=30"
-            label="URL Params Input"
-            error={paramsResult.error}
-            rows={8}
-          />
-          {paramsResult.output && (
-            <CodeOutput value={paramsResult.output} label="JSON Output" downloadFileName="params.json" />
-          )}
-        </>
-      ) : (
-        <>
-          <CodeEditor
-            value={jsonInput}
-            onChange={setJsonInput}
-            placeholder='Paste JSON object, e.g. {"name":"John","age":"30"}'
-            label="JSON Input"
-            error={jsonResult.error}
-            rows={10}
-          />
-          {jsonResult.output && (
-            <CodeOutput value={jsonResult.output} label="URL Params Output" downloadFileName="params.txt" />
-          )}
-        </>
-      )}
+      <div className="grid lg:grid-cols-2 gap-6">
+        {tab === 'params-to-json' ? (
+          <>
+            <CodeEditor
+              value={paramsInput}
+              onChange={setParamsInput}
+              placeholder="Paste URL params, e.g. ?name=John&age=30"
+              label="URL Params Input"
+              error={paramsResult.error}
+              rows={10}
+            />
+            {paramsResult.output && (
+              <CodeOutput value={paramsResult.output} label="JSON Output" downloadFileName="params.json" />
+            )}
+          </>
+        ) : (
+          <>
+            <CodeEditor
+              value={jsonInput}
+              onChange={setJsonInput}
+              placeholder='Paste JSON object, e.g. {"name":"John","age":"30"}'
+              label="JSON Input"
+              error={jsonResult.error}
+              rows={10}
+            />
+            {jsonResult.output && (
+              <CodeOutput value={jsonResult.output} label="URL Params Output" downloadFileName="params.txt" />
+            )}
+          </>
+        )}
+      </div>
     </div>
   );
 }
