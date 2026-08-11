@@ -1,10 +1,15 @@
 /**
- * Prebuild script: ensure the correct yt-dlp binary is available.
- * On Linux/serverless (Vercel), we need the compiled binary (yt-dlp_linux),
- * not the Python script, because the serverless runtime doesn't include Python.
+ * Prebuild script: ensure the correct yt-dlp and ffmpeg binaries are available.
+ *
+ * On Linux/serverless (Vercel) we need the compiled yt-dlp binary (yt-dlp_linux),
+ * not the Python script, because the serverless runtime has no Python.
+ *
+ * yt-dlp is also re-downloaded when the cached copy is stale: the extractors
+ * break every few weeks when YouTube changes, so an old binary means broken
+ * downloads in production.
  */
 
-const { existsSync, createWriteStream, copyFileSync } = require('fs');
+const { existsSync, createWriteStream, copyFileSync, statSync, mkdirSync } = require('fs');
 const { mkdir, chmod } = require('fs/promises');
 const { join } = require('path');
 const { pipeline } = require('stream/promises');
@@ -12,55 +17,63 @@ const { pipeline } = require('stream/promises');
 const YOUTUBE_DL_DIR = join(__dirname, '..', 'node_modules', 'youtube-dl-exec', 'bin');
 const YOUTUBE_DL_FILE = process.platform === 'linux' ? 'yt-dlp_linux' : 'yt-dlp';
 const YOUTUBE_DL_PATH = join(YOUTUBE_DL_DIR, YOUTUBE_DL_FILE);
+const MAX_BINARY_AGE_MS = 14 * 24 * 60 * 60 * 1000; // 14 days
+
+function isFresh(path) {
+  try {
+    const age = Date.now() - statSync(path).mtimeMs;
+    return age < MAX_BINARY_AGE_MS;
+  } catch {
+    return false;
+  }
+}
 
 async function ensureYtDlp() {
-  if (existsSync(YOUTUBE_DL_PATH)) {
-    console.log(`[prebuild] yt-dlp already exists: ${YOUTUBE_DL_PATH}`);
+  if (existsSync(YOUTUBE_DL_PATH) && isFresh(YOUTUBE_DL_PATH)) {
+    console.log(`[prebuild] yt-dlp is present and recent: ${YOUTUBE_DL_PATH}`);
     return;
   }
 
-  console.log(`[prebuild] Downloading ${YOUTUBE_DL_FILE}...`);
-
+  console.log(`[prebuild] Downloading latest ${YOUTUBE_DL_FILE}...`);
   const releaseUrl = `https://github.com/yt-dlp/yt-dlp/releases/latest/download/${YOUTUBE_DL_FILE}`;
 
-  const response = await fetch(releaseUrl);
-  if (!response.ok) {
-    throw new Error(`Failed to download ${YOUTUBE_DL_FILE}: ${response.status} ${response.statusText}`);
+  try {
+    const response = await fetch(releaseUrl);
+    if (!response.ok) {
+      throw new Error(`${response.status} ${response.statusText}`);
+    }
+
+    await mkdir(YOUTUBE_DL_DIR, { recursive: true });
+    await pipeline(response.body, createWriteStream(YOUTUBE_DL_PATH));
+    await chmod(YOUTUBE_DL_PATH, 0o755);
+    console.log(`[prebuild] Downloaded yt-dlp to ${YOUTUBE_DL_PATH}`);
+  } catch (error) {
+    if (existsSync(YOUTUBE_DL_PATH)) {
+      // Keep building with the stale binary rather than failing the deploy
+      console.warn(`[prebuild] Could not refresh yt-dlp (${error.message}); using existing binary`);
+      return;
+    }
+    throw error;
   }
-
-  await mkdir(YOUTUBE_DL_DIR, { recursive: true });
-  await pipeline(response.body, createWriteStream(YOUTUBE_DL_PATH));
-  await chmod(YOUTUBE_DL_PATH, 0o755);
-
-  console.log(`[prebuild] Downloaded yt-dlp to ${YOUTUBE_DL_PATH}`);
 }
 
 function ensureFfmpeg() {
-  // Copy ffmpeg-static binary to a reliable location that survives bundling
+  // Copy the ffmpeg-static binary to a stable path that survives bundling.
   const ffmpegStaticPath = join(__dirname, '..', 'node_modules', 'ffmpeg-static', 'ffmpeg');
-  const fallbackPaths = [
-    join(__dirname, '..', 'bin', 'ffmpeg'),
-    join(process.cwd(), 'bin', 'ffmpeg'),
-  ];
+  const dest = join(__dirname, '..', 'bin', 'ffmpeg');
 
   if (!existsSync(ffmpegStaticPath)) {
     console.log('[prebuild] ffmpeg-static not found, skipping');
     return;
   }
 
-  for (const dest of fallbackPaths) {
-    try {
-      const destDir = join(dest, '..');
-      if (!existsSync(destDir)) {
-        require('fs').mkdirSync(destDir, { recursive: true });
-      }
-      copyFileSync(ffmpegStaticPath, dest);
-      chmod(dest, 0o755);
-      console.log(`[prebuild] Copied ffmpeg to ${dest}`);
-      return;
-    } catch (err) {
-      console.log(`[prebuild] Could not copy ffmpeg to ${dest}: ${err.message}`);
-    }
+  try {
+    mkdirSync(join(dest, '..'), { recursive: true });
+    copyFileSync(ffmpegStaticPath, dest);
+    chmod(dest, 0o755);
+    console.log(`[prebuild] Copied ffmpeg to ${dest}`);
+  } catch (err) {
+    console.log(`[prebuild] Could not copy ffmpeg to ${dest}: ${err.message}`);
   }
 }
 

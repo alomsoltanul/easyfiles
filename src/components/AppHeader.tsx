@@ -91,7 +91,12 @@ const NAV_SECTIONS: NavSection[] = [
       </svg>
     ),
     items: [
-      { label: 'Video Downloader', href: '/video', description: 'Download from YouTube, Facebook, Instagram, X' },
+      { label: 'All Video Tools', href: '/video-tools', description: 'Browse every video downloader in one place' },
+      { label: 'Video Downloader', href: '/video', description: 'Any link from YouTube, Facebook, Instagram, X' },
+      { label: 'YouTube Downloader', href: '/video-tools/youtube', description: 'Save YouTube videos as MP4 or MP3' },
+      { label: 'Facebook Downloader', href: '/video-tools/facebook', description: 'Save public Facebook videos and Reels' },
+      { label: 'Instagram Downloader', href: '/video-tools/instagram', description: 'Save public Instagram Reels and posts' },
+      { label: 'X (Twitter) Downloader', href: '/video-tools/x', description: 'Save videos from public posts on X' },
     ],
   },
 ];

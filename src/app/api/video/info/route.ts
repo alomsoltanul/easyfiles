@@ -1,111 +1,99 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { isAllowedUrl, checkRateLimit, sanitizeLogInput } from '@/lib/video-security';
-import { getVideoInfo } from '@/lib/video-downloader';
+import { isAllowedUrl, normalizeUrl, checkRateLimit } from '@/lib/video-security';
+import { getVideoInfo, VideoError } from '@/lib/video-downloader';
+
+export const maxDuration = 60;
+export const dynamic = 'force-dynamic';
 
 /**
  * POST /api/video/info
  *
- * Securely fetches video metadata for a given URL.
- *
- * Security measures:
- * - Rate limiting per IP
- * - Strict URL allowlist (YouTube, Facebook, Instagram, X)
- * - Input length limits
- * - Error sanitization (no internal details leaked)
+ * Returns display metadata plus the quality rungs that are actually
+ * downloadable for this video. Source CDN URLs are deliberately not returned:
+ * they are IP-locked to this server and are only used by /api/video/download.
  */
 export async function POST(request: NextRequest) {
   try {
-    // Extract client IP for rate limiting
     const ip =
       request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
       request.headers.get('x-real-ip') ||
       'unknown';
 
-    if (!checkRateLimit(ip)) {
+    if (!checkRateLimit(`${ip}:info`)) {
       return NextResponse.json(
-        { error: 'Too many requests. Please slow down and try again in a minute.' },
-        { status: 429 }
+        { error: 'Too many requests. Please slow down and try again in a minute.', code: 'RATE_LIMITED' },
+        { status: 429 },
       );
     }
 
-    // Parse and validate body
     let body: { url?: string };
     try {
       body = await request.json();
     } catch {
-      return NextResponse.json(
-        { error: 'Invalid request body. Expected JSON with a "url" field.' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Invalid request body.', code: 'INVALID_BODY' }, { status: 400 });
     }
 
-    const { url } = body;
-
-    if (!url || typeof url !== 'string') {
-      return NextResponse.json(
-        { error: 'URL is required and must be a string.' },
-        { status: 400 }
-      );
+    if (!body.url || typeof body.url !== 'string') {
+      return NextResponse.json({ error: 'A video URL is required.', code: 'MISSING_URL' }, { status: 400 });
+    }
+    if (body.url.length > 2048) {
+      return NextResponse.json({ error: 'That URL is too long.', code: 'URL_LENGTH' }, { status: 400 });
     }
 
-    if (url.length > 2048) {
-      return NextResponse.json(
-        { error: 'URL exceeds maximum length.' },
-        { status: 400 }
-      );
-    }
+    const url = normalizeUrl(body.url);
 
-    // Strict URL validation
     if (!isAllowedUrl(url)) {
       return NextResponse.json(
-        { error: 'Invalid or unsupported URL. Only YouTube, Facebook, Instagram, and X (Twitter) URLs are allowed.' },
-        { status: 400 }
+        {
+          error: 'That link is not supported. Paste a YouTube, Facebook, Instagram, or X (Twitter) video URL.',
+          code: 'URL_INVALID',
+        },
+        { status: 400 },
       );
     }
 
-    // Fetch video info securely through the wrapper
     const info = await getVideoInfo(url);
 
-    return NextResponse.json({ success: true, data: info }, { status: 200 });
-  } catch (error: any) {
-    // Log full error details for diagnostics (internal only, not sent to client)
-    console.error('Video info API error details:', {
-      message: error?.message,
-      stderr: error?.stderr,
-      stdout: error?.stdout,
-      code: error?.exitCode,
-      stack: error?.stack?.split('\n').slice(0, 5),
+    if (info.isLive) {
+      return NextResponse.json(
+        { error: 'Live streams cannot be downloaded. Try again once the stream has ended.', code: 'IS_LIVE' },
+        { status: 400 },
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        id: info.id,
+        title: info.title,
+        thumbnail: info.thumbnail,
+        duration: info.duration,
+        uploader: info.uploader,
+        webpageUrl: info.webpageUrl,
+        platform: info.platform,
+        qualities: info.qualities,
+        hasAudioOnly: info.hasAudioOnly,
+        canConvertMp3: info.canConvertMp3,
+      },
+    });
+  } catch (error) {
+    if (error instanceof VideoError) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
+    }
+
+    console.error('Video info API error:', {
+      message: (error as Error)?.message,
+      stack: (error as Error)?.stack?.split('\n').slice(0, 5),
     });
 
-    // Return sanitized error - never expose internal details
-    const message = error?.message || 'Failed to process request.';
-
-    if (message.includes('Invalid or unsupported URL')) {
-      return NextResponse.json({ error: message }, { status: 400 });
-    }
-
-    if (message.includes('private') || message.includes('age-restricted') || message.includes('authentication')) {
-      return NextResponse.json({ error: message }, { status: 403 });
-    }
-
-    if (message.includes('not available') || message.includes('removed') || message.includes('blocked')) {
-      return NextResponse.json({ error: message }, { status: 404 });
-    }
-
     return NextResponse.json(
-      { error: 'Failed to fetch video information. Please try again later.' },
-      { status: 500 }
+      { error: 'Could not read that video. Please try again.', code: 'UNKNOWN' },
+      { status: 500 },
     );
   }
 }
 
-/**
- * Reject GET requests to prevent accidental URL logging in server access logs.
- * (URLs in query strings end up in logs, which is a security concern.)
- */
+/** GET is rejected so video URLs never end up in access logs. */
 export async function GET() {
-  return NextResponse.json(
-    { error: 'Method not allowed. Use POST with a JSON body.' },
-    { status: 405 }
-  );
+  return NextResponse.json({ error: 'Method not allowed. Use POST.', code: 'METHOD' }, { status: 405 });
 }

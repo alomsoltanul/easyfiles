@@ -222,6 +222,26 @@ const ALL_TOOLS: Tool[] = [
     description: 'Download videos and audio from YouTube, Facebook, Instagram, X (Twitter)',
     icon: SVG_VIDEO, department: 'video',
   },
+  {
+    label: 'YouTube Downloader', href: '/video-tools/youtube', route: 'download',
+    description: 'Save YouTube videos and Shorts as MP4, or pull the audio as MP3',
+    icon: SVG_VIDEO, department: 'video',
+  },
+  {
+    label: 'Facebook Downloader', href: '/video-tools/facebook', route: 'download',
+    description: 'Save public Facebook videos, Reels and Watch clips as MP4',
+    icon: SVG_VIDEO, department: 'video',
+  },
+  {
+    label: 'Instagram Downloader', href: '/video-tools/instagram', route: 'download',
+    description: 'Save public Instagram Reels, feed videos and IGTV clips as MP4',
+    icon: SVG_VIDEO, department: 'video',
+  },
+  {
+    label: 'X (Twitter) Downloader', href: '/video-tools/x', route: 'download',
+    description: 'Save videos and GIFs from public posts on X (Twitter) as MP4',
+    icon: SVG_VIDEO, department: 'video',
+  },
 ];
 
 const routeIcons: Record<string, React.ReactNode> = {
@@ -300,7 +320,7 @@ export default function ToolsDashboard({ department }: ToolsDashboardProps) {
       <div className="relative overflow-hidden bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(16,185,129,0.12),transparent_50%),radial-gradient(ellipse_at_bottom_left,rgba(99,102,241,0.1),transparent_50%)]" />
         <div className="absolute inset-0 opacity-[0.03] bg-[repeating-linear-gradient(45deg,transparent,transparent_6px,currentColor_6px,currentColor_7px)]" />
-        <div className="relative max-w-4xl mx-auto px-4 py-16 sm:py-20">
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 sm:py-20">
           <div className="hero-rise">
             {!department ? (
               <>
@@ -375,7 +395,7 @@ export default function ToolsDashboard({ department }: ToolsDashboardProps) {
 
       {/* Department tabs */}
       <div className="border-b border-slate-200 bg-white sticky top-[73px] z-40 shadow-sm">
-        <div className="max-w-4xl mx-auto px-4">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex gap-1 overflow-x-auto no-scrollbar py-3">
             <button
               onClick={() => setActiveDept('all')}
@@ -405,7 +425,7 @@ export default function ToolsDashboard({ department }: ToolsDashboardProps) {
       </div>
 
       {/* Tool cards grid */}
-      <div className="max-w-5xl mx-auto px-4 py-10">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
         {tools.length === 0 ? (
           <div className="text-center py-20">
             <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-4">

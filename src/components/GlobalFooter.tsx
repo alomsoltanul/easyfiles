@@ -38,9 +38,13 @@ const footerLinks = [
   },
   {
     title: 'Video Tools',
-    moreHref: '/video',
+    moreHref: '/video-tools',
     items: [
       { label: 'Video Downloader', href: '/video' },
+      { label: 'YouTube Downloader', href: '/video-tools/youtube' },
+      { label: 'Facebook Downloader', href: '/video-tools/facebook' },
+      { label: 'Instagram Downloader', href: '/video-tools/instagram' },
+      { label: 'X (Twitter) Downloader', href: '/video-tools/x' },
     ],
   },
 ];
@@ -48,7 +52,7 @@ const footerLinks = [
 export default function GlobalFooter() {
   return (
     <footer className="bg-white border-t border-slate-200 mt-12">
-      <div className="max-w-4xl mx-auto px-4 py-12">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-8">
           {footerLinks.map((section) => (
             <div key={section.title}>
