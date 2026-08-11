@@ -1,12 +1,14 @@
 /**
  * Video Downloader Security Utilities
  *
- * Comprehensive security layer to prevent:
- * - Command injection
+ * Security layer to prevent:
+ * - Command injection (yt-dlp is always spawned with an argv array, never a shell)
  * - SSRF (Server-Side Request Forgery)
  * - Abuse via malicious URLs
  * - Rate limiting bypass
  */
+
+export type Platform = 'youtube' | 'facebook' | 'instagram' | 'twitter';
 
 // Allowed platforms - strictly limited to prevent abuse
 const ALLOWED_HOSTS = new Set([
@@ -17,10 +19,13 @@ const ALLOWED_HOSTS = new Set([
   'music.youtube.com',
   'facebook.com',
   'www.facebook.com',
+  'web.facebook.com',
   'fb.watch',
+  'fb.gg',
   'm.facebook.com',
   'instagram.com',
   'www.instagram.com',
+  'ddinstagram.com',
   'twitter.com',
   'www.twitter.com',
   'mobile.twitter.com',
@@ -35,13 +40,15 @@ const BASE_ALLOWED_DOMAINS = new Set([
   'youtu.be',
   'facebook.com',
   'fb.watch',
+  'fb.gg',
   'instagram.com',
+  'ddinstagram.com',
   'twitter.com',
   'x.com',
 ]);
 
 // Known safe subdomains
-const KNOWN_SUBDOMAINS = ['www.', 'm.', 'music.', 'mobile.'];
+const KNOWN_SUBDOMAINS = ['www.', 'm.', 'music.', 'mobile.', 'web.'];
 
 /**
  * Validates that a URL is from an allowed video platform.
@@ -53,7 +60,6 @@ export function isAllowedUrl(inputUrl: string): boolean {
     return false;
   }
 
-  // Trim whitespace and normalize
   const trimmed = inputUrl.trim();
   if (trimmed.length === 0 || trimmed.length > 2048) {
     return false;
@@ -84,12 +90,13 @@ export function isAllowedUrl(inputUrl: string): boolean {
       return false;
     }
 
-    // Reject URLs containing shell metacharacters or control characters in any part
-    if (containsDangerousCharacters(trimmed)) {
+    // Reject control characters. Shell metacharacters are NOT rejected: the URL is
+    // passed to yt-dlp as an argv element (execFile, no shell), and characters like
+    // "&" are legitimate in YouTube URLs (?v=ID&t=42s).
+    if (containsControlCharacters(trimmed)) {
       return false;
     }
 
-    // Reject if hostname doesn't match allowlist
     if (!ALLOWED_HOSTS.has(hostname)) {
       return false;
     }
@@ -100,13 +107,12 @@ export function isAllowedUrl(inputUrl: string): boolean {
       return false;
     }
 
-    // Reject URLs with unusual path characters that might be used for traversal or injection
     if (containsPathTraversal(url.pathname)) {
       return false;
     }
 
-    // Reject URLs with query strings containing suspicious patterns
-    if (containsSuspiciousQuery(url.search)) {
+    // Reject anything that could be read as a yt-dlp option rather than a URL
+    if (trimmed.startsWith('-')) {
       return false;
     }
 
@@ -118,22 +124,61 @@ export function isAllowedUrl(inputUrl: string): boolean {
 }
 
 /**
+ * Normalizes a user-pasted URL: trims, adds a missing scheme, and strips
+ * tracking/playlist parameters that confuse extractors.
+ */
+export function normalizeUrl(inputUrl: string): string {
+  let candidate = (inputUrl || '').trim();
+  if (!candidate) return '';
+
+  if (!/^https?:\/\//i.test(candidate)) {
+    candidate = `https://${candidate.replace(/^\/+/, '')}`;
+  }
+
+  try {
+    const url = new URL(candidate);
+    const host = url.hostname.toLowerCase();
+
+    // YouTube: keep only the parameters that identify the video
+    if (host.endsWith('youtube.com')) {
+      const keep = new Set(['v', 't', 'start']);
+      for (const key of [...url.searchParams.keys()]) {
+        if (!keep.has(key)) url.searchParams.delete(key);
+      }
+    }
+    if (host === 'youtu.be') {
+      const keep = new Set(['t', 'start']);
+      for (const key of [...url.searchParams.keys()]) {
+        if (!keep.has(key)) url.searchParams.delete(key);
+      }
+    }
+    // Instagram / Facebook / X: strip common tracking params
+    for (const key of ['igsh', 'igshid', 'utm_source', 'utm_medium', 'utm_campaign', 'fbclid', 'mibextid', 's', 'img_index']) {
+      if (host.includes('instagram') || host.includes('facebook') || host.includes('fb.watch') || host.includes('twitter') || host.includes('x.com')) {
+        url.searchParams.delete(key);
+      }
+    }
+
+    return url.toString();
+  } catch {
+    return candidate;
+  }
+}
+
+/**
  * Checks if a hostname is an IP address (IPv4 or IPv6).
  */
 function isIPAddress(hostname: string): boolean {
-  // IPv4 check
   const ipv4Pattern = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/;
   if (ipv4Pattern.test(hostname)) {
     return true;
   }
 
-  // IPv6 check (simplified - checks for hex digits and colons, enclosed in brackets)
   const ipv6Pattern = /^\[?[0-9a-fA-F:]+\]?$/;
   if (ipv6Pattern.test(hostname) && hostname.includes(':')) {
     return true;
   }
 
-  // Reject 'localhost' and common internal hostnames
   const internalHosts = new Set(['localhost', '127.0.0.1', '0.0.0.0', '::1']);
   if (internalHosts.has(hostname)) {
     return true;
@@ -155,12 +200,10 @@ function getBaseDomain(hostname: string): string {
 }
 
 /**
- * Checks for dangerous shell/command characters that could be used for injection.
+ * Rejects control characters (newlines, NULs) that could corrupt argv or headers.
  */
-function containsDangerousCharacters(input: string): boolean {
-  // Shell metacharacters and control characters
-  const dangerous = /[;|`$&{}()<>\n\r\x00\x01\x02\x03\x04\x05\x06\x07\x08\x0b\x0c\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f]/;
-  return dangerous.test(input);
+function containsControlCharacters(input: string): boolean {
+  return /[\x00-\x1f\x7f]/.test(input);
 }
 
 /**
@@ -168,16 +211,6 @@ function containsDangerousCharacters(input: string): boolean {
  */
 function containsPathTraversal(pathname: string): boolean {
   return pathname.includes('..') || pathname.includes('%2e%2e') || pathname.includes('.%2e') || pathname.includes('%2e.');
-}
-
-/**
- * Checks for suspicious query parameters that might indicate injection attempts.
- */
-function containsSuspiciousQuery(search: string): boolean {
-  if (!search || search.length === 0) return false;
-  const lower = search.toLowerCase();
-  const suspicious = ['cmd=', 'exec=', 'eval=', 'system=', 'shell=', 'bash=', 'sh=', 'python=', 'node=', 'php=', 'perl='];
-  return suspicious.some((s) => lower.includes(s));
 }
 
 // ===== Rate Limiting =====
@@ -189,13 +222,13 @@ interface RateLimitEntry {
 
 const rateLimitMap = new Map<string, RateLimitEntry>();
 const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
-const RATE_LIMIT_MAX_REQUESTS = 15; // 15 requests per minute per IP
+const RATE_LIMIT_MAX_REQUESTS = 20; // per IP per window
 
 /**
  * Simple in-memory rate limiter.
  * Returns true if the request is allowed, false if rate limited.
  */
-export function checkRateLimit(ip: string): boolean {
+export function checkRateLimit(ip: string, max: number = RATE_LIMIT_MAX_REQUESTS): boolean {
   const now = Date.now();
   const entry = rateLimitMap.get(ip);
 
@@ -204,7 +237,7 @@ export function checkRateLimit(ip: string): boolean {
     return true;
   }
 
-  if (entry.count >= RATE_LIMIT_MAX_REQUESTS) {
+  if (entry.count >= max) {
     return false;
   }
 
@@ -224,32 +257,32 @@ export function cleanupRateLimits(): void {
   }
 }
 
-// Cleanup every 5 minutes
+// Cleanup every 5 minutes (unref'd so it never keeps a serverless instance alive)
 if (typeof globalThis !== 'undefined') {
-  setInterval(cleanupRateLimits, 5 * 60 * 1000);
+  const timer = setInterval(cleanupRateLimits, 5 * 60 * 1000);
+  if (typeof timer === 'object' && typeof (timer as NodeJS.Timeout).unref === 'function') {
+    (timer as NodeJS.Timeout).unref();
+  }
 }
 
 // ===== Input Sanitization =====
 
 /**
  * Sanitizes a string to prevent injection in logs or error messages.
- * Removes control characters and limits length.
  */
 export function sanitizeLogInput(input: string): string {
   if (!input) return '';
-  return input
-    .replace(/[\x00-\x1f\x7f-\x9f]/g, '')
-    .slice(0, 500);
+  return input.replace(/[\x00-\x1f\x7f-\x9f]/g, '').slice(0, 500);
 }
 
 /**
  * Detects the platform from a URL for UI display purposes.
  */
-export function detectPlatform(url: string): 'youtube' | 'facebook' | 'instagram' | 'twitter' | 'unknown' {
+export function detectPlatform(url: string): Platform | 'unknown' {
   try {
     const hostname = new URL(url).hostname.toLowerCase();
     if (hostname.includes('youtube') || hostname.includes('youtu.be')) return 'youtube';
-    if (hostname.includes('facebook') || hostname.includes('fb.watch')) return 'facebook';
+    if (hostname.includes('facebook') || hostname.includes('fb.watch') || hostname.includes('fb.gg')) return 'facebook';
     if (hostname.includes('instagram')) return 'instagram';
     if (hostname.includes('twitter') || hostname.includes('x.com')) return 'twitter';
     return 'unknown';
@@ -262,11 +295,23 @@ export function detectPlatform(url: string): 'youtube' | 'facebook' | 'instagram
  * Sanitizes a filename to prevent directory traversal or dangerous characters.
  */
 export function sanitizeFileName(name: string): string {
-  return name
-    .replace(/[<>|:*?"\\/\x00-\x1f]/g, '_')
-    .replace(/\.+/g, '.')
-    .trim()
-    .slice(0, 100);
+  return (
+    name
+      .replace(/[<>|:*?"\\/\x00-\x1f]/g, '_')
+      .replace(/\s+/g, ' ')
+      .replace(/\.+/g, '.')
+      .trim()
+      .slice(0, 100) || 'download'
+  );
+}
+
+/**
+ * Builds an RFC 6266 / RFC 5987 compatible Content-Disposition value so that
+ * non-ASCII titles survive the trip to the browser.
+ */
+export function contentDisposition(fileName: string): string {
+  const asciiFallback = fileName.replace(/[^\x20-\x7e]/g, '_').replace(/"/g, '');
+  return `attachment; filename="${asciiFallback}"; filename*=UTF-8''${encodeURIComponent(fileName)}`;
 }
 
 /**
@@ -276,10 +321,12 @@ export function isValidFormat(format: string): format is 'video' | 'audio' {
   return format === 'video' || format === 'audio';
 }
 
+export const VALID_QUALITIES = ['best', '2160p', '1440p', '1080p', '720p', '480p', '360p'] as const;
+export type Quality = (typeof VALID_QUALITIES)[number];
+
 /**
  * Validates the requested quality is valid.
  */
-export function isValidQuality(quality: string): boolean {
-  const validQualities = ['best', '1080p', '720p', '480p', '360p', 'audio'];
-  return validQualities.includes(quality);
+export function isValidQuality(quality: string): quality is Quality {
+  return (VALID_QUALITIES as readonly string[]).includes(quality);
 }

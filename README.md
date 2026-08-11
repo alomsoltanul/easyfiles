@@ -128,6 +128,24 @@ Works on all modern browsers that support:
 - No cookies or tracking
 - Complete isolation from external services
 
+## Video Downloader Configuration
+
+The video tools (`/video`, `/video-tools/*`) are the only server-side feature: `yt-dlp`
+resolves the stream and the API pipes it to the browser in ranged chunks. Optional
+environment variables:
+
+| Variable | Purpose |
+| --- | --- |
+| `VIDEO_TOKEN_SECRET` | Signs short-lived download links. Falls back to `VERCEL_DEPLOYMENT_ID`; set it explicitly if you run multiple instances behind a load balancer. |
+| `INSTAGRAM_COOKIES` | Netscape-format cookie jar (raw or base64). Instagram blocks anonymous datacenter traffic, so most Reels need this. |
+| `FACEBOOK_COOKIES`, `YOUTUBE_COOKIES`, `TWITTER_COOKIES` | Same format, for private/age-gated content on those platforms. X hides most media from logged-out visitors, so its cookie jar is close to mandatory. |
+| `VIDEO_PROXY_URL` | Routes yt-dlp through a proxy — the escape hatch when YouTube rate-limits the deployment's IP. |
+| `FFMPEG_PATH`, `YT_DLP_PATH` | Override binary discovery. Both binaries are otherwise prepared by `scripts/ensure-yt-dlp.js` at prebuild. |
+
+Quality above 360p on YouTube is stored as separate video and audio streams; those are
+merged on the fly with `ffmpeg -c copy` and streamed out as fragmented MP4, so nothing is
+written to disk.
+
 ## Deployment
 
 ### Vercel (Recommended)
