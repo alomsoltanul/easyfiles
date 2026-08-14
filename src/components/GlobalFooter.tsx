@@ -6,6 +6,8 @@ const footerLinks = [
     moreHref: '/image',
     items: [
       { label: 'Image Converter', href: '/image/convert' },
+      { label: 'PNG to WebP', href: '/image/png-to-webp' },
+      { label: 'JPEG to WebP', href: '/image/jpeg-to-webp' },
       { label: 'Image Compressor', href: '/image/compress' },
       { label: 'Image Resizer', href: '/image/resize' },
     ],

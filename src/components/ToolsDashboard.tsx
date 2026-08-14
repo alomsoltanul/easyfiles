@@ -73,6 +73,16 @@ const ALL_TOOLS: Tool[] = [
     icon: SVG_IMAGE, department: 'image',
   },
   {
+    label: 'PNG to WebP', href: '/image/png-to-webp', route: 'png-to-webp',
+    description: 'Convert PNG to WebP with lossless mode and full alpha transparency — batch + ZIP',
+    icon: SVG_IMAGE, department: 'image',
+  },
+  {
+    label: 'JPEG to WebP', href: '/image/jpeg-to-webp', route: 'jpeg-to-webp',
+    description: 'Convert JPG/JPEG photos to high-quality WebP — typically 25–35% smaller',
+    icon: SVG_IMAGE, department: 'image',
+  },
+  {
     label: 'Image Compressor', href: '/image/compress', route: 'compress',
     description: 'Reduce image file size while maintaining visual quality — WebP optimization',
     icon: SVG_IMAGE, department: 'image',
@@ -303,6 +313,8 @@ const routeIcons: Record<string, React.ReactNode> = {
   convert: SVG_IMAGE,
   'heic-to-png': SVG_IMAGE,
   'heic-to-jpeg': SVG_IMAGE,
+  'png-to-webp': SVG_IMAGE,
+  'jpeg-to-webp': SVG_IMAGE,
   compress: SVG_IMAGE,
   resize: SVG_IMAGE,
   format: SVG_JSON,

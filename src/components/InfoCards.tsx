@@ -21,8 +21,10 @@ const colorMap: Record<CardColor, { bg: string; text: string }> = {
 };
 
 export default function InfoCards({ cards }: InfoCardsProps) {
+  // No grid here — ToolLayout already wraps this in `grid sm:grid-cols-3`,
+  // and nesting a second grid squeezed every card into one column.
   return (
-    <div className="grid sm:grid-cols-3 gap-4 mt-8">
+    <>
       {cards.map((card, i) => (
         <div key={i} className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
           <div className={`w-10 h-10 rounded-lg ${colorMap[card.color].bg} flex items-center justify-center mb-3`}>
@@ -32,7 +34,7 @@ export default function InfoCards({ cards }: InfoCardsProps) {
           <p className="text-xs text-slate-500 leading-relaxed">{card.description}</p>
         </div>
       ))}
-    </div>
+    </>
   );
 }
 

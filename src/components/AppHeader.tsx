@@ -22,6 +22,8 @@ const NAV_SECTIONS: NavSection[] = [
     ),
     items: [
       { label: 'Convert', href: '/image/convert', description: 'HEIC, JPEG, PNG, WebP — any format to any format' },
+      { label: 'PNG to WebP', href: '/image/png-to-webp', description: 'Lossless WebP with transparency preserved' },
+      { label: 'JPEG to WebP', href: '/image/jpeg-to-webp', description: 'High-quality WebP photos, 25–35% smaller' },
       { label: 'Compress', href: '/image/compress', description: 'Reduce image file size while keeping quality' },
       { label: 'Resize', href: '/image/resize', description: 'Change dimensions with preset sizes' },
     ],
