@@ -15,9 +15,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ConvertTools — All-in-One Image, PDF & Video Tools",
-  description: "Convert images between HEIC, JPEG, PNG, WebP. Merge, split, compress PDFs. Scan documents with OCR. Download videos. All free, private, and browser-based.",
-  keywords: ["image converter", "heic to jpg", "png to webp", "pdf merger", "pdf compressor", "ocr scanner", "video downloader", "image compressor"],
+  title: "ConvertTools — 56 Free Image, PDF, JSON & Video Tools",
+  description: "Convert HEIC, JPEG, PNG and WebP. Merge, split, sign and compress PDFs. Format and convert JSON. Download video. 56 tools that run in your browser — no uploads, no account.",
+  keywords: ["image converter", "heic to jpg", "png to webp", "pdf merger", "pdf compressor", "pdf to word", "json formatter", "ocr scanner", "video downloader", "image compressor"],
 };
 
 export default function RootLayout({
