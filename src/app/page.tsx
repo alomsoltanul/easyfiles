@@ -1,5 +1,5 @@
-import ToolsDashboard from '@/components/ToolsDashboard';
+import HomePage from '@/components/HomePage';
 
 export default function Home() {
-  return <ToolsDashboard />;
+  return <HomePage />;
 }

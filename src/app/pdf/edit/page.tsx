@@ -1,28 +1,23 @@
+import { Archivo } from 'next/font/google';
 import PdfEditor from '@/components/PdfEditor';
-import ToolLayout from '@/components/ToolLayout';
-import InfoCards, { PrivacyIcon, SpeedIcon, BulkIcon } from '@/components/InfoCards';
+
+const archivo = Archivo({
+  subsets: ['latin'],
+  weight: ['400', '500', '600', '700', '800'],
+});
 
 export const metadata = {
-  title: 'Edit PDF — Add Text, Images and Shapes',
-  description: 'Add text, images, rectangles, ellipses, arrows, highlights and freehand drawing to a PDF. Undo, redo and per-object editing included.',
+  title: 'Edit PDF — Text, Images, Shapes and Pages',
+  description:
+    'Edit a PDF in your browser: add and restyle text, place images, draw, highlight, reorder or delete pages, then export — flattened or fully editable. Nothing is uploaded.',
 };
 
 export const dynamic = 'force-dynamic';
 
 export default function PdfEditPage() {
   return (
-    <ToolLayout
-      title="Edit PDF"
-      description="Add text, images, shapes and freehand annotations to any page"
-      infoCards={
-        <InfoCards cards={[
-          { color: 'blue', icon: <PrivacyIcon />, title: 'Private & Secure', description: 'The editor runs in your browser — your document never leaves it.' },
-          { color: 'violet', icon: <SpeedIcon />, title: 'Real Objects', description: 'Text stays vector text and shapes stay crisp at any zoom.' },
-          { color: 'emerald', icon: <BulkIcon />, title: 'Undo & Redo', description: 'Every change is tracked, so experimenting costs nothing.' },
-        ]} />
-      }
-    >
+    <div className={`${archivo.className} bg-[#f3f2f2] text-[#201e1d] antialiased`}>
       <PdfEditor />
-    </ToolLayout>
+    </div>
   );
 }

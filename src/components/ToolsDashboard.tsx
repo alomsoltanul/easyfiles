@@ -1,558 +1,175 @@
 'use client';
 
-import React, { useState, useMemo, useRef } from 'react';
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
-
-interface Tool {
-  label: string;
-  href: string;
-  description: string;
-  icon: React.ReactNode;
-  department: string;
-  route: string;
-}
-
-const DEPARTMENTS = {
-  image: {
-    name: 'Image Tools',
-    color: 'emerald',
-    description: 'Convert, compress, and resize images — all in your browser',
-  },
-  pdf: {
-    name: 'PDF Tools',
-    color: 'blue',
-    description: 'Merge, split, compress, and transform PDF documents',
-  },
-  json: {
-    name: 'JSON Tools',
-    color: 'violet',
-    description: 'Format, validate, convert, and manipulate JSON data',
-  },
-  video: {
-    name: 'Video Tools',
-    color: 'amber',
-    description: 'Download videos and extract audio from popular platforms',
-  },
-} as const;
-
-const SVG_IMAGE = (
-  <svg className="w-full h-full" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-  </svg>
-);
-const SVG_PDF = (
-  <svg className="w-full h-full" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-  </svg>
-);
-const SVG_JSON = (
-  <svg className="w-full h-full" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16m-7 6h7" />
-  </svg>
-);
-const SVG_VIDEO = (
-  <svg className="w-full h-full" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-  </svg>
-);
-
-const ALL_TOOLS: Tool[] = [
-  {
-    label: 'Image Converter', href: '/image/convert', route: 'convert',
-    description: 'Convert HEIC, JPEG, PNG, WebP — any format to any format with batch processing',
-    icon: SVG_IMAGE, department: 'image',
-  },
-  {
-    label: 'HEIC to PNG', href: '/image/heic-to-png', route: 'heic-to-png',
-    description: 'Convert Apple HEIC/HEIF photos to lossless PNG — single or bulk processing',
-    icon: SVG_IMAGE, department: 'image',
-  },
-  {
-    label: 'HEIC to JPEG', href: '/image/heic-to-jpeg', route: 'heic-to-jpeg',
-    description: 'Convert Apple HEIC/HEIF photos to JPEG — single or bulk processing',
-    icon: SVG_IMAGE, department: 'image',
-  },
-  {
-    label: 'PNG to WebP', href: '/image/png-to-webp', route: 'png-to-webp',
-    description: 'Convert PNG to WebP with lossless mode and full alpha transparency — batch + ZIP',
-    icon: SVG_IMAGE, department: 'image',
-  },
-  {
-    label: 'JPEG to WebP', href: '/image/jpeg-to-webp', route: 'jpeg-to-webp',
-    description: 'Convert JPG/JPEG photos to high-quality WebP — typically 25–35% smaller',
-    icon: SVG_IMAGE, department: 'image',
-  },
-  {
-    label: 'Image Compressor', href: '/image/compress', route: 'compress',
-    description: 'Reduce image file size while maintaining visual quality — WebP optimization',
-    icon: SVG_IMAGE, department: 'image',
-  },
-  {
-    label: 'Image Resizer', href: '/image/resize', route: 'resize',
-    description: 'Change dimensions with preset sizes for social media, email, and thumbnails',
-    icon: SVG_IMAGE, department: 'image',
-  },
-  {
-    label: 'JSON Formatter', href: '/json/format', route: 'format',
-    description: 'Pretty print JSON with syntax highlighting and collapsible tree view for deep exploration',
-    icon: SVG_JSON, department: 'json',
-  },
-  {
-    label: 'JSON Validator', href: '/json/validate', route: 'validate',
-    description: 'Check JSON syntax with precise line-level error reporting and instant feedback',
-    icon: SVG_JSON, department: 'json',
-  },
-  {
-    label: 'JSON Minifier', href: '/json/minify', route: 'minify',
-    description: 'Compress JSON by removing whitespace — see exact before/after size savings',
-    icon: SVG_JSON, department: 'json',
-  },
-  {
-    label: 'JSON ↔ CSV', href: '/json/csv', route: 'csv',
-    description: 'Convert JSON arrays to CSV tables and parse CSV data back to structured JSON',
-    icon: SVG_JSON, department: 'json',
-  },
-  {
-    label: 'JSON ↔ YAML', href: '/json/yaml', route: 'yaml',
-    description: 'Convert between JSON and YAML — perfect for Docker, K8s, and CI config files',
-    icon: SVG_JSON, department: 'json',
-  },
-  {
-    label: 'JSON Diff', href: '/json/diff', route: 'diff',
-    description: 'Compare two JSON objects side by side with color-coded inline difference highlighting',
-    icon: SVG_JSON, department: 'json',
-  },
-  {
-    label: 'TS Interface Gen', href: '/json/ts-interface', route: 'ts-interface',
-    description: 'Generate TypeScript interfaces or type aliases automatically from JSON structures',
-    icon: SVG_JSON, department: 'json',
-  },
-  {
-    label: 'JSON Escape', href: '/json/escape', route: 'escape',
-    description: 'Escape special characters for JSON strings or unescape them back to raw text',
-    icon: SVG_JSON, department: 'json',
-  },
-  {
-    label: 'JSONPath Eval', href: '/json/jsonpath', route: 'jsonpath',
-    description: 'Query and filter JSON data using JSONPath expressions with live match count',
-    icon: SVG_JSON, department: 'json',
-  },
-  {
-    label: 'JSON Sort Keys', href: '/json/sort', route: 'sort',
-    description: 'Recursively sort JSON object keys alphabetically for consistent diffs',
-    icon: SVG_JSON, department: 'json',
-  },
-  {
-    label: 'JSON URL Params', href: '/json/url-params', route: 'url-params',
-    description: 'Convert between JSON objects and URL query parameter strings with encoding',
-    icon: SVG_JSON, department: 'json',
-  },
-  {
-    label: 'Merge PDFs', href: '/pdf/merge', route: 'merge',
-    description: 'Combine multiple PDF files into a single document — drag to reorder pages',
-    icon: SVG_PDF, department: 'pdf',
-  },
-  {
-    label: 'Split PDF', href: '/pdf/split', route: 'split',
-    description: 'Extract specific pages from a PDF — preview thumbnails for easy selection',
-    icon: SVG_PDF, department: 'pdf',
-  },
-  {
-    label: 'Compress PDF', href: '/pdf/compress', route: 'compress',
-    description: 'Reduce PDF file size by optimizing structure without losing document quality',
-    icon: SVG_PDF, department: 'pdf',
-  },
-  {
-    label: 'PDF to Images', href: '/pdf/to-images', route: 'to-images',
-    description: 'Render PDF pages to high-quality JPG or PNG images for sharing or embedding',
-    icon: SVG_PDF, department: 'pdf',
-  },
-  {
-    label: 'Images to PDF', href: '/pdf/from-images', route: 'from-images',
-    description: 'Combine multiple images into a single PDF document with custom ordering',
-    icon: SVG_PDF, department: 'pdf',
-  },
-  {
-    label: 'Scan to PDF', href: '/pdf/scan', route: 'scan',
-    description: 'Scan document photos with image enhancement and Tesseract OCR text extraction',
-    icon: SVG_PDF, department: 'pdf',
-  },
-  {
-    label: 'OCR PDF', href: '/pdf/ocr', route: 'ocr',
-    description: 'Extract text from PDFs and images with multi-language support and create searchable PDFs',
-    icon: SVG_PDF, department: 'pdf',
-  },
-  {
-    label: 'Rotate PDF', href: '/pdf/rotate', route: 'rotate',
-    description: 'Rotate individual pages or all pages in your PDF by 90°, 180°, or 270°',
-    icon: SVG_PDF, department: 'pdf',
-  },
-  {
-    label: 'Delete Pages', href: '/pdf/delete-pages', route: 'delete-pages',
-    description: 'Remove unwanted pages from your PDF with visual preview',
-    icon: SVG_PDF, department: 'pdf',
-  },
-  {
-    label: 'Reorder Pages', href: '/pdf/reorder', route: 'reorder',
-    description: 'Rearrange pages in your PDF by dragging and dropping thumbnails',
-    icon: SVG_PDF, department: 'pdf',
-  },
-  {
-    label: 'Extract Pages', href: '/pdf/extract', route: 'extract',
-    description: 'Extract specific pages from your PDF into a new document',
-    icon: SVG_PDF, department: 'pdf',
-  },
-  {
-    label: 'Watermark PDF', href: '/pdf/watermark', route: 'watermark',
-    description: 'Add text or image watermarks with custom opacity, rotation, and position',
-    icon: SVG_PDF, department: 'pdf',
-  },
-  {
-    label: 'Protect PDF', href: '/pdf/protect', route: 'protect',
-    description: 'Password-protect your PDF with AES-256 encryption and permission controls',
-    icon: SVG_PDF, department: 'pdf',
-  },
-  {
-    label: 'Unlock PDF', href: '/pdf/unlock', route: 'unlock',
-    description: 'Remove password protection from your PDF after valid authentication',
-    icon: SVG_PDF, department: 'pdf',
-  },
-  {
-    label: 'Sign PDF', href: '/pdf/sign', route: 'sign',
-    description: 'Add your signature to PDF documents — draw, type, or upload',
-    icon: SVG_PDF, department: 'pdf',
-  },
-  {
-    label: 'PDF Metadata', href: '/pdf/metadata', route: 'metadata',
-    description: 'Edit PDF metadata including title, author, subject, keywords, and creation date',
-    icon: SVG_PDF, department: 'pdf',
-  },
-  {
-    label: 'Edit PDF', href: '/pdf/edit', route: 'edit',
-    description: 'Add text, images, shapes, highlights and freehand annotations to any page',
-    icon: SVG_PDF, department: 'pdf',
-  },
-  {
-    label: 'Page Numbers', href: '/pdf/page-numbers', route: 'page-numbers',
-    description: 'Add page numbers with custom position, format, numerals and typography',
-    icon: SVG_PDF, department: 'pdf',
-  },
-  {
-    label: 'Crop PDF', href: '/pdf/crop', route: 'crop',
-    description: 'Trim margins or crop to a selected area, with automatic content detection',
-    icon: SVG_PDF, department: 'pdf',
-  },
-  {
-    label: 'Organize PDF', href: '/pdf/organize', route: 'organize',
-    description: 'Sort, rotate, duplicate, delete and insert pages in one page manager',
-    icon: SVG_PDF, department: 'pdf',
-  },
-  {
-    label: 'Redact PDF', href: '/pdf/redact', route: 'redact',
-    description: 'Permanently remove sensitive text and graphics — not just cover them up',
-    icon: SVG_PDF, department: 'pdf',
-  },
-  {
-    label: 'PDF Forms', href: '/pdf/forms', route: 'forms',
-    description: 'Detect and fill AcroForm fields, or draw new fillable fields onto a PDF',
-    icon: SVG_PDF, department: 'pdf',
-  },
-  {
-    label: 'Compare PDF', href: '/pdf/compare', route: 'compare',
-    description: 'Compare two PDFs with a pixel difference overlay and a word-level text diff',
-    icon: SVG_PDF, department: 'pdf',
-  },
-  {
-    label: 'Repair PDF', href: '/pdf/repair', route: 'repair',
-    description: 'Diagnose and recover damaged, truncated or unreadable PDF files',
-    icon: SVG_PDF, department: 'pdf',
-  },
-  {
-    label: 'PDF to PDF/A', href: '/pdf/to-pdfa', route: 'to-pdfa',
-    description: 'Convert to PDF/A for archiving, with an embedded sRGB output intent',
-    icon: SVG_PDF, department: 'pdf',
-  },
-  {
-    label: 'PDF to Markdown', href: '/pdf/to-markdown', route: 'to-markdown',
-    description: 'Convert PDF text into Markdown with headings, lists and tables preserved',
-    icon: SVG_PDF, department: 'pdf',
-  },
-  {
-    label: 'HTML to PDF', href: '/pdf/from-html', route: 'from-html',
-    description: 'Convert a web page, pasted HTML or an .html file into a paginated PDF',
-    icon: SVG_PDF, department: 'pdf',
-  },
-  {
-    label: 'Video Downloader', href: '/video', route: 'download',
-    description: 'Download videos and audio from YouTube, Facebook, Instagram, X (Twitter)',
-    icon: SVG_VIDEO, department: 'video',
-  },
-  {
-    label: 'YouTube Downloader', href: '/video-tools/youtube', route: 'download',
-    description: 'Save YouTube videos and Shorts as MP4, or pull the audio as MP3',
-    icon: SVG_VIDEO, department: 'video',
-  },
-  {
-    label: 'Facebook Downloader', href: '/video-tools/facebook', route: 'download',
-    description: 'Save public Facebook videos, Reels and Watch clips as MP4',
-    icon: SVG_VIDEO, department: 'video',
-  },
-  {
-    label: 'Instagram Downloader', href: '/video-tools/instagram', route: 'download',
-    description: 'Save public Instagram Reels, feed videos and IGTV clips as MP4',
-    icon: SVG_VIDEO, department: 'video',
-  },
-  {
-    label: 'X (Twitter) Downloader', href: '/video-tools/x', route: 'download',
-    description: 'Save videos and GIFs from public posts on X (Twitter) as MP4',
-    icon: SVG_VIDEO, department: 'video',
-  },
-];
-
-const routeIcons: Record<string, React.ReactNode> = {
-  convert: SVG_IMAGE,
-  'heic-to-png': SVG_IMAGE,
-  'heic-to-jpeg': SVG_IMAGE,
-  'png-to-webp': SVG_IMAGE,
-  'jpeg-to-webp': SVG_IMAGE,
-  compress: SVG_IMAGE,
-  resize: SVG_IMAGE,
-  format: SVG_JSON,
-  validate: SVG_JSON,
-  minify: SVG_JSON,
-  csv: SVG_JSON,
-  yaml: SVG_JSON,
-  diff: SVG_JSON,
-  'ts-interface': SVG_JSON,
-  escape: SVG_JSON,
-  jsonpath: SVG_JSON,
-  sort: SVG_JSON,
-  'url-params': SVG_JSON,
-  merge: SVG_PDF,
-  split: SVG_PDF,
-  'to-images': SVG_PDF,
-  'from-images': SVG_PDF,
-  scan: SVG_PDF,
-  ocr: SVG_PDF,
-  rotate: SVG_PDF,
-  'delete-pages': SVG_PDF,
-  reorder: SVG_PDF,
-  extract: SVG_PDF,
-  watermark: SVG_PDF,
-  protect: SVG_PDF,
-  unlock: SVG_PDF,
-  sign: SVG_PDF,
-  metadata: SVG_PDF,
-  download: SVG_VIDEO,
-};
+import {
+  DEPARTMENTS,
+  DEPARTMENT_LIST,
+  ICONS,
+  TOOL_COUNT,
+  deptCount,
+  groupedTools,
+  searchTools,
+  type DeptId,
+} from '@/lib/tools';
 
 interface ToolsDashboardProps {
-  department?: string;
+  department: DeptId;
 }
 
 export default function ToolsDashboard({ department }: ToolsDashboardProps) {
-  const [search, setSearch] = useState('');
-  const [activeDept, setActiveDept] = useState<string>(department || 'all');
-  const [prevDept, setPrevDept] = useState(department);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const meta = DEPARTMENTS[department];
+  const [query, setQuery] = useState('');
 
-  if (prevDept !== department) {
-    setPrevDept(department);
-    setActiveDept(department || 'all');
-  }
+  const groups = useMemo(() => {
+    if (!query.trim()) return groupedTools(department);
+    const matches = searchTools(query, department);
+    return groupedTools(department)
+      .map((group) => ({ name: group.name, tools: group.tools.filter((t) => matches.includes(t)) }))
+      .filter((group) => group.tools.length > 0);
+  }, [query, department]);
 
-  const tools = useMemo(() => {
-    let filtered = ALL_TOOLS;
-    if (activeDept !== 'all') {
-      filtered = filtered.filter((t) => t.department === activeDept);
-    }
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      filtered = filtered.filter(
-        (t) =>
-          t.label.toLowerCase().includes(q) ||
-          t.description.toLowerCase().includes(q) ||
-          t.route.toLowerCase().includes(q) ||
-          t.department.toLowerCase().includes(q)
-      );
-    }
-    return filtered;
-  }, [search, activeDept]);
-
-  const departmentKeys = Object.keys(DEPARTMENTS) as (keyof typeof DEPARTMENTS)[];
+  const matchCount = groups.reduce((sum, g) => sum + g.tools.length, 0);
 
   return (
     <>
       {/* Hero */}
-      <div className="relative overflow-hidden bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(16,185,129,0.12),transparent_50%),radial-gradient(ellipse_at_bottom_left,rgba(99,102,241,0.1),transparent_50%)]" />
-        <div className="absolute inset-0 opacity-[0.03] bg-[repeating-linear-gradient(45deg,transparent,transparent_6px,currentColor_6px,currentColor_7px)]" />
-        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 sm:py-20">
+      <section className="relative overflow-hidden bg-slate-950">
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_70%_60%_at_20%_0%,rgba(16,185,129,0.18),transparent_60%),radial-gradient(ellipse_50%_60%_at_90%_20%,rgba(99,102,241,0.16),transparent_60%)]" />
+        <div className="relative mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8">
           <div className="hero-rise">
-            {!department ? (
-              <>
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="w-14 h-14 bg-emerald-500 rounded-2xl flex items-center justify-center shadow-lg shadow-emerald-500/25">
-                    <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                    </svg>
-                  </div>
-                  <div>
-                    <h1 className="text-3xl sm:text-4xl font-bold text-white">ConvertTools</h1>
-                    <p className="text-base text-slate-400 font-medium">All-in-one daily tools — free, private, no uploads</p>
-                  </div>
-                </div>
-                <p className="text-slate-400 text-base max-w-xl mb-6 leading-relaxed">
-                  {ALL_TOOLS.length} powerful tools across image, PDF, JSON, and video — all processing happens directly in your browser.
-                  Your files never leave your device.
-                </p>
-                <div className="flex flex-wrap gap-2 mb-8">
-                  {[`${ALL_TOOLS.length} tools`, '100% in-browser', 'No uploads', 'Free forever'].map((chip) => (
-                    <span key={chip} className="inline-flex items-center gap-1.5 bg-white/10 text-slate-300 text-xs font-semibold px-3 py-1.5 rounded-full border border-white/10">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                      {chip}
-                    </span>
-                  ))}
-                </div>
-              </>
-            ) : (
-              <>
-                <Link href="/" className="inline-flex items-center gap-2 text-sm text-slate-400 hover:text-white transition-colors mb-4">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                  </svg>
-                  All Tools
-                </Link>
-                <h1 className="text-3xl sm:text-4xl font-bold text-white">{DEPARTMENTS[activeDept as keyof typeof DEPARTMENTS]?.name}</h1>
-                <p className="text-base text-slate-400 mt-2 max-w-xl">
-                  {DEPARTMENTS[activeDept as keyof typeof DEPARTMENTS]?.description}
-                </p>
-              </>
-            )}
+            <Link href="/" className="mb-6 inline-flex items-center gap-1.5 text-sm font-medium text-slate-400 transition-colors hover:text-white">
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+              </svg>
+              All {TOOL_COUNT} tools
+            </Link>
+
+            <div className="flex items-start gap-4">
+              <div className={`h-14 w-14 shrink-0 rounded-2xl bg-linear-to-br ${meta.gradient} p-3.5 text-white shadow-lg`}>
+                {ICONS[meta.icon]}
+              </div>
+              <div>
+                <h1 className="text-3xl font-bold tracking-tight text-white sm:text-4xl">{meta.name}</h1>
+                <p className="mt-2 max-w-2xl text-base leading-relaxed text-slate-400">{meta.description}</p>
+              </div>
+            </div>
+
+            <div className="mt-6 flex flex-wrap gap-2">
+              {[`${deptCount(department)} tools`, '100% in-browser', 'No uploads', 'Free forever'].map((chip) => (
+                <span
+                  key={chip}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-slate-300"
+                >
+                  <span className={`h-1.5 w-1.5 rounded-full ${meta.dot}`} />
+                  {chip}
+                </span>
+              ))}
+            </div>
           </div>
 
-          {/* Search bar */}
-          <div className="relative max-w-lg hero-rise hero-rise-delay">
-            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-            </div>
+          <div className="hero-rise hero-rise-delay relative mt-8 max-w-md">
+            <svg className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
             <input
-              ref={inputRef}
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search all tools..."
-              className="w-full pl-12 pr-4 py-3.5 bg-white/10 backdrop-blur-sm border border-white/15 rounded-xl text-white placeholder:text-slate-500 text-sm focus:outline-none focus:border-emerald-500/50 focus:bg-white/15 transition-all duration-200"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={`Search ${meta.short.toLowerCase()} tools…`}
+              aria-label={`Search ${meta.name}`}
+              className="w-full rounded-xl border border-white/15 bg-white/10 py-3.5 pl-12 pr-10 text-sm text-white placeholder:text-slate-500 backdrop-blur-sm transition-all focus:border-emerald-400/60 focus:bg-white/15 focus:outline-none"
             />
-            {search && (
+            {query && (
               <button
-                onClick={() => { setSearch(''); inputRef.current?.focus(); }}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors"
+                onClick={() => setQuery('')}
+                aria-label="Clear search"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 transition-colors hover:text-slate-300"
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
             )}
           </div>
         </div>
-      </div>
+      </section>
 
-      {/* Department tabs */}
-      <div className="border-b border-slate-200 bg-white sticky top-[73px] z-40 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex gap-1 overflow-x-auto no-scrollbar py-3">
-            <button
-              onClick={() => setActiveDept('all')}
-              className={`shrink-0 px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-200 ${
-                activeDept === 'all'
-                  ? 'bg-slate-900 text-white shadow-sm'
-                  : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100'
+      {/* Sibling department strip */}
+      <div className="sticky top-[68px] z-30 border-b border-slate-200 bg-white/95 backdrop-blur-md">
+        <div className="no-scrollbar mx-auto flex max-w-7xl gap-2 overflow-x-auto px-4 py-3 sm:px-6 lg:px-8">
+          <Link
+            href="/"
+            className="shrink-0 rounded-lg px-3.5 py-1.5 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-100"
+          >
+            All Tools
+          </Link>
+          {DEPARTMENT_LIST.map((d) => (
+            <Link
+              key={d.id}
+              href={d.href}
+              className={`flex shrink-0 items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-sm font-semibold transition-colors ${
+                d.id === department ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'
               }`}
             >
-              All Tools
-            </button>
-            {departmentKeys.map((key) => (
-              <button
-                key={key}
-                onClick={() => setActiveDept(key)}
-                className={`shrink-0 px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-200 ${
-                  activeDept === key
-                    ? 'bg-slate-900 text-white shadow-sm'
-                    : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100'
-                }`}
-              >
-                {DEPARTMENTS[key].name.replace(' Tools', '')}
-              </button>
-            ))}
-          </div>
+              <span className={`h-2 w-2 rounded-full ${d.dot}`} />
+              {d.short}
+              <span className="opacity-60">{deptCount(d.id)}</span>
+            </Link>
+          ))}
         </div>
       </div>
 
-      {/* Tool cards grid */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-        {tools.length === 0 ? (
-          <div className="text-center py-20">
-            <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
-              <svg className="w-8 h-8 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-            </div>
-            <h3 className="text-lg font-semibold text-slate-700 mb-1">No tools found</h3>
-            <p className="text-sm text-slate-500">Try a different search term or category</p>
+      {/* Grouped tools */}
+      <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
+        {matchCount === 0 ? (
+          <div className="rounded-2xl border border-dashed border-slate-300 py-20 text-center">
+            <h3 className="font-semibold text-slate-700">No {meta.short} tool matches “{query}”</h3>
+            <button onClick={() => setQuery('')} className="mt-3 text-sm font-semibold text-emerald-600 hover:text-emerald-700">
+              Clear search
+            </button>
           </div>
         ) : (
-          <>
-            <p className="text-xs text-slate-400 mb-6 font-medium">
-              {tools.length} tool{tools.length !== 1 ? 's' : ''} found
-            </p>
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {tools.map((tool, i) => (
-                <Link
-                  key={tool.href}
-                  href={tool.href}
-                  className="group bg-white rounded-2xl border border-slate-200 p-5 shadow-sm hover:shadow-md hover:border-slate-300 transition-all duration-200 hover:-translate-y-0.5"
-                  style={{ animationDelay: `${i * 40}ms` }}
-                >
-                  <div className="flex items-start gap-4">
-                    <div className={`shrink-0 w-10 h-10 rounded-xl flex items-center justify-center ${
-                      tool.department === 'image' ? 'bg-emerald-50 text-emerald-600' :
-                      tool.department === 'json' ? 'bg-violet-50 text-violet-600' :
-                      tool.department === 'pdf' ? 'bg-blue-50 text-blue-600' :
-                      'bg-amber-50 text-amber-600'
-                    }`}>
-                      {routeIcons[tool.route]}
-                    </div>
-                    <div className="min-w-0">
-                      <h3 className="font-semibold text-slate-900 text-sm group-hover:text-emerald-600 transition-colors">
-                        {tool.label}
-                      </h3>
-                      <p className="text-xs text-slate-500 mt-1 leading-relaxed line-clamp-2">
-                        {tool.description}
-                      </p>
-                      <div className="flex items-center gap-2 mt-3">
-                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                          tool.department === 'image' ? 'bg-emerald-50 text-emerald-600' :
-                          tool.department === 'json' ? 'bg-violet-50 text-violet-600' :
-                          tool.department === 'pdf' ? 'bg-blue-50 text-blue-600' :
-                          'bg-amber-50 text-amber-600'
-                        }`}>
-                          {DEPARTMENTS[tool.department as keyof typeof DEPARTMENTS].name}
-                        </span>
+          <div className="space-y-12">
+            {groups.map((group) => (
+              <section key={group.name}>
+                <div className="mb-5 flex items-center gap-3">
+                  <h2 className="text-lg font-bold tracking-tight text-slate-900">{group.name}</h2>
+                  <span className="h-px flex-1 bg-slate-200" />
+                  <span className="text-xs font-semibold text-slate-400">{group.tools.length}</span>
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {group.tools.map((tool) => (
+                    <Link
+                      key={tool.href}
+                      href={tool.href}
+                      className="group flex flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md"
+                    >
+                      <div className="flex items-start gap-3.5">
+                        <span className={`h-10 w-10 shrink-0 rounded-xl p-2.5 ${meta.bg} ${meta.text}`}>{ICONS[tool.icon]}</span>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <h3 className={`truncate text-sm font-semibold text-slate-900 ${meta.hoverText} transition-colors`}>
+                              {tool.label}
+                            </h3>
+                            {tool.badge && (
+                              <span className="shrink-0 rounded-full bg-amber-100 px-1.5 py-px text-[9px] font-bold uppercase tracking-wide text-amber-700">
+                                {tool.badge}
+                              </span>
+                            )}
+                          </div>
+                          <p className="mt-1.5 line-clamp-2 text-xs leading-relaxed text-slate-500">{tool.description}</p>
+                        </div>
+                        <svg className="mt-1 h-4 w-4 shrink-0 text-slate-300 transition-all group-hover:translate-x-0.5 group-hover:text-slate-500" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                        </svg>
                       </div>
-                    </div>
-                    <div className="shrink-0 self-center text-slate-300 group-hover:text-emerald-500 group-hover:translate-x-0.5 transition-all duration-200">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                      </svg>
-                    </div>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          </>
+                    </Link>
+                  ))}
+                </div>
+              </section>
+            ))}
+          </div>
         )}
       </div>
     </>

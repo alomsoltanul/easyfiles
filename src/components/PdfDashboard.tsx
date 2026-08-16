@@ -369,7 +369,7 @@ export default function PdfDashboard() {
       </div>
 
       {/* Category tabs */}
-      <div className="border-b border-slate-200 bg-white/95 backdrop-blur sticky top-[73px] z-40 shadow-sm">
+      <div className="border-b border-slate-200 bg-white/95 backdrop-blur sticky top-[68px] z-40 shadow-sm">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex gap-1 overflow-x-auto no-scrollbar py-3">
             <TabButton active={activeCat === 'all'} onClick={() => setActiveCat('all')} count={counts.all}>All</TabButton>

@@ -1,83 +1,55 @@
 import Link from 'next/link';
-
-const footerLinks = [
-  {
-    title: 'Image Tools',
-    moreHref: '/image',
-    items: [
-      { label: 'Image Converter', href: '/image/convert' },
-      { label: 'PNG to WebP', href: '/image/png-to-webp' },
-      { label: 'JPEG to WebP', href: '/image/jpeg-to-webp' },
-      { label: 'Image Compressor', href: '/image/compress' },
-      { label: 'Image Resizer', href: '/image/resize' },
-    ],
-  },
-  {
-    title: 'PDF Tools',
-    moreHref: '/pdf',
-    items: [
-      { label: 'Merge PDFs', href: '/pdf/merge' },
-      { label: 'Split PDF', href: '/pdf/split' },
-      { label: 'Compress PDF', href: '/pdf/compress' },
-      { label: 'PDF to Images', href: '/pdf/to-images' },
-      { label: 'Sign PDF', href: '/pdf/sign' },
-      { label: 'Protect PDF', href: '/pdf/protect' },
-      { label: 'OCR PDF', href: '/pdf/ocr' },
-      { label: 'Watermark PDF', href: '/pdf/watermark' },
-    ],
-  },
-  {
-    title: 'JSON Tools',
-    moreHref: '/json',
-    items: [
-      { label: 'JSON Formatter', href: '/json/format' },
-      { label: 'JSON Validator', href: '/json/validate' },
-      { label: 'JSON Minifier', href: '/json/minify' },
-      { label: 'JSON Diff', href: '/json/diff' },
-      { label: 'JSON ↔ YAML', href: '/json/yaml' },
-      { label: 'JSON ↔ CSV', href: '/json/csv' },
-    ],
-  },
-  {
-    title: 'Video Tools',
-    moreHref: '/video-tools',
-    items: [
-      { label: 'Video Downloader', href: '/video' },
-      { label: 'YouTube Downloader', href: '/video-tools/youtube' },
-      { label: 'Facebook Downloader', href: '/video-tools/facebook' },
-      { label: 'Instagram Downloader', href: '/video-tools/instagram' },
-      { label: 'X (Twitter) Downloader', href: '/video-tools/x' },
-    ],
-  },
-];
+import { DEPARTMENT_LIST, ICONS, TOOL_COUNT, deptCount, toolsByDept } from '@/lib/tools';
 
 export default function GlobalFooter() {
+  const year = new Date().getFullYear();
+
   return (
-    <footer className="bg-white border-t border-slate-200 mt-12">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-8">
-          {footerLinks.map((section) => (
-            <div key={section.title}>
-              <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">
-                {section.title}
-              </h4>
+    <footer className="border-t border-slate-200 bg-white">
+      <div className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8">
+        <div className="grid gap-10 lg:grid-cols-5">
+          {/* Brand */}
+          <div className="lg:col-span-1">
+            <Link href="/" className="flex items-center gap-2.5">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-linear-to-br from-emerald-500 to-teal-500">
+                <svg className="h-5 w-5 text-white" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+              </span>
+              <span className="text-[17px] font-bold tracking-tight text-slate-900">ConvertTools</span>
+            </Link>
+            <p className="mt-4 text-sm leading-relaxed text-slate-500">
+              {TOOL_COUNT} file tools that run inside your browser. No uploads, no accounts, no limits.
+            </p>
+            <div className="mt-5 flex flex-wrap gap-2">
+              {['No uploads', 'Free forever'].map((chip) => (
+                <span key={chip} className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600">
+                  {chip}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          {/* Tool columns */}
+          {DEPARTMENT_LIST.map((meta) => (
+            <div key={meta.id}>
+              <div className="mb-4 flex items-center gap-2">
+                <span className={`h-5 w-5 ${meta.text}`}>{ICONS[meta.icon]}</span>
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700">{meta.name}</h4>
+              </div>
               <ul className="space-y-2">
-                {section.items.map((item) => (
-                  <li key={item.href}>
-                    <Link
-                      href={item.href}
-                      className="text-sm text-slate-500 hover:text-slate-800 transition-colors"
-                    >
-                      {item.label}
-                    </Link>
-                  </li>
-                ))}
+                {toolsByDept(meta.id)
+                  .slice(0, 8)
+                  .map((tool) => (
+                    <li key={tool.href}>
+                      <Link href={tool.href} className="text-[13px] text-slate-500 transition-colors hover:text-slate-900">
+                        {tool.label}
+                      </Link>
+                    </li>
+                  ))}
                 <li>
-                  <Link
-                    href={section.moreHref}
-                    className="text-sm font-semibold text-emerald-600 hover:text-emerald-700 transition-colors"
-                  >
-                    View all →
+                  <Link href={meta.href} className={`text-[13px] font-semibold ${meta.text}`}>
+                    All {deptCount(meta.id)} tools →
                   </Link>
                 </li>
               </ul>
@@ -85,21 +57,17 @@ export default function GlobalFooter() {
           ))}
         </div>
 
-        <div className="border-t border-slate-100 mt-8 pt-6 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 bg-emerald-500 rounded-lg flex items-center justify-center">
-              <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
-            </div>
-            <span className="text-sm font-semibold text-slate-800">ConvertTools</span>
+        <div className="mt-12 flex flex-col items-center justify-between gap-3 border-t border-slate-100 pt-6 sm:flex-row">
+          <p className="text-xs text-slate-400">© {year} ConvertTools · All processing happens in your browser.</p>
+          <div className="flex items-center gap-5">
+            <Link href="/pricing" className="text-xs font-medium text-slate-500 hover:text-slate-800">
+              Plans
+            </Link>
+            <Link href="/" className="text-xs font-medium text-slate-500 hover:text-slate-800">
+              All tools
+            </Link>
+            <span className="text-xs text-slate-300">Free &amp; open source</span>
           </div>
-
-          <p className="text-xs text-slate-400 text-center">
-            All processing happens in your browser. No uploads, no tracking, no limits.
-          </p>
-
-          <span className="text-xs text-slate-300">Free & Open Source</span>
         </div>
       </div>
     </footer>
