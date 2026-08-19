@@ -7,9 +7,9 @@ const archivo = Archivo({
 });
 
 export const metadata = {
-  title: 'Edit PDF — Text, Images, Shapes and Pages',
+  title: 'Edit PDF Text Online — Rewrite, Delete and Reflow',
   description:
-    'Edit a PDF in your browser: add and restyle text, place images, draw, highlight, reorder or delete pages, then export — flattened or fully editable. Nothing is uploaded.',
+    'Edit the text already inside a PDF: click any paragraph, heading or table cell to retype or delete it, and the column reflows around your change. Add text, images, shapes and pages too. Runs entirely in your browser — nothing is uploaded.',
 };
 
 export const dynamic = 'force-dynamic';

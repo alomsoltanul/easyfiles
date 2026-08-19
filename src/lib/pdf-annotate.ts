@@ -1,22 +1,29 @@
 import { StandardFonts, degrees, LineCapStyle, type PDFFont, type PDFDocument } from '@cantoo/pdf-lib';
 import { loadPdf, toBlob, baseName, hexToRgb, renderedSize, visualPointToPdf } from './pdf-common';
 import type { ToolOutput } from './pdf-common';
+import { stripTextRuns, type RunAnchor } from './pdf-text-remove';
+import {
+  ANNOTATION_FONTS,
+  getTextMetrics,
+  layoutLine,
+  sanitizeForStandardFont,
+  wrapText,
+  type AnnotationFontKey,
+  type TextAlign,
+} from './pdf-text-metrics';
 
-export type AnnotationFontKey =
-  | 'Helvetica' | 'Helvetica-Bold' | 'Helvetica-Oblique'
-  | 'Times' | 'Times-Bold' | 'Times-Italic'
-  | 'Courier' | 'Courier-Bold';
-
-export const ANNOTATION_FONTS: Record<AnnotationFontKey, StandardFonts> = {
-  'Helvetica': StandardFonts.Helvetica,
-  'Helvetica-Bold': StandardFonts.HelveticaBold,
-  'Helvetica-Oblique': StandardFonts.HelveticaOblique,
-  'Times': StandardFonts.TimesRoman,
-  'Times-Bold': StandardFonts.TimesRomanBold,
-  'Times-Italic': StandardFonts.TimesRomanItalic,
-  'Courier': StandardFonts.Courier,
-  'Courier-Bold': StandardFonts.CourierBold,
-};
+export {
+  ANNOTATION_FONTS,
+  FONT_KEYS,
+  sanitizeForStandardFont,
+  unsupportedGlyphs,
+  fontCss,
+  nearestStandardFont,
+  restyleFont,
+  isBoldFont,
+  isItalicFont,
+} from './pdf-text-metrics';
+export type { AnnotationFontKey, TextAlign } from './pdf-text-metrics';
 
 interface Base {
   id: string;
@@ -57,35 +64,38 @@ export type Annotation =
       opacity: number;
     })
   | (Base & {
+      /**
+       * A run of the document's own text, re-typeset. Unlike every other
+       * annotation this one is measured in PDF user space: the original glyphs
+       * are painted over with `background`, then `text` is re-wrapped inside
+       * `box` and drawn. That keeps it exact under any page rotation, because
+       * nothing has to round-trip through screen coordinates.
+       */
+      kind: 'textblock';
+      /** Rectangle of the original glyphs, painted over before redrawing. */
+      cover: { x: number; y: number; width: number; height: number };
+      background: string;
+      /** Where the replacement text goes. `top` is the top edge, y-up space. */
+      box: { x: number; top: number; width: number };
+      text: string;
+      size: number;
+      font: AnnotationFontKey;
+      color: string;
+      lineHeight: number;
+      align: TextAlign;
+      /** Top of the box down to the first baseline, in points. */
+      ascent: number;
+      /** Start of each original glyph run, relative to the crop box. */
+      anchors: RunAnchor[];
+      opacity: number;
+    })
+  | (Base & {
       kind: 'draw';
       points: { x: number; y: number }[];
       strokeColor: string;
       strokeWidth: number;
       opacity: number;
     });
-
-/**
- * The 14 standard PDF fonts are WinAnsi-encoded, so anything outside that
- * range would make pdf-lib throw at draw time. Map the common typographic
- * characters and drop the rest rather than failing the whole export.
- */
-const CHAR_FIXES: Record<string, string> = {
-  '\u2018': "'", '\u2019': "'", '\u201A': ',',
-  '\u201C': '"', '\u201D': '"',
-  '\u2013': '-', '\u2014': '-', '\u2026': '...', '\u2022': '-',
-  '\u00A0': ' ', '\u2028': '\n', '\u2029': '\n', '\t': '    ',
-};
-
-export function sanitizeForStandardFont(text: string): string {
-  let out = '';
-  for (const ch of text) {
-    if (ch === '\n') { out += ch; continue; }
-    const fixed = CHAR_FIXES[ch];
-    if (fixed !== undefined) { out += fixed; continue; }
-    out += ch.charCodeAt(0) <= 0xff ? ch : '?';
-  }
-  return out;
-}
 
 async function embedDataUrl(doc: PDFDocument, dataUrl: string) {
   let url = dataUrl;
@@ -110,6 +120,7 @@ export async function applyAnnotations(file: File, annotations: Annotation[]): P
 
   const doc = await loadPdf(file);
   const pages = doc.getPages();
+  const metrics = await getTextMetrics();
 
   const fontCache = new Map<AnnotationFontKey, PDFFont>();
   const getFont = async (key: AnnotationFontKey) => {
@@ -120,7 +131,61 @@ export async function applyAnnotations(file: File, annotations: Annotation[]): P
     return font;
   };
 
-  for (const a of annotations) {
+  // Re-typeset document text goes down first: anything the user drew on top of
+  // it — a highlight, a signature — has to stay on top after the rewrite.
+  const ordered = [...annotations].sort(
+    (a, b) => (a.kind === 'textblock' ? 0 : 1) - (b.kind === 'textblock' ? 0 : 1)
+  );
+
+  // Deleting the old glyph runs has to happen before anything is drawn: it
+  // rewrites the page's content stream, which would throw away drawings made
+  // first. What it manages to remove decides which blocks still need a patch.
+  const erased = new Map<number, Set<string>>();
+  for (const a of ordered) {
+    if (a.kind !== 'textblock' || a.anchors.length === 0) continue;
+    const page = pages[a.page];
+    if (!page || erased.has(a.page)) continue;
+    const crop = page.getCropBox();
+    const anchors = ordered.flatMap((other) =>
+      other.kind === 'textblock' && other.page === a.page
+        ? other.anchors.map((anchor) => ({ x: crop.x + anchor.x, y: crop.y + anchor.y }))
+        : []
+    );
+    try {
+      erased.set(a.page, stripTextRuns(doc, page, anchors));
+    } catch {
+      // Any stream we cannot rewrite safely keeps its text and gets a patch.
+      erased.set(a.page, new Set<string>());
+    }
+  }
+
+  // Same two passes as the editor preview: every patch first, then every line
+  // of text. A block that moved down can land on the rectangle its neighbour
+  // needs painted out, and interleaving the two would clip the new lines.
+  for (const a of ordered) {
+    if (a.kind !== 'textblock') continue;
+    const page = pages[a.page];
+    if (!page) continue;
+    const crop = page.getCropBox();
+    const gone = erased.get(a.page);
+    // Runs that were deleted outright need no patch, so anything drawn under
+    // them — a table rule, a tinted cell — stays visible.
+    const lifted =
+      a.anchors.length > 0 &&
+      !!gone &&
+      a.anchors.every((anchor) => gone.has(`${Math.round(crop.x + anchor.x)}|${Math.round(crop.y + anchor.y)}`));
+    if (lifted) continue;
+    page.drawRectangle({
+      x: crop.x + a.cover.x,
+      y: crop.y + a.cover.y,
+      width: a.cover.width,
+      height: a.cover.height,
+      color: hexToRgb(a.background),
+      borderWidth: 0,
+    });
+  }
+
+  for (const a of ordered) {
     const page = pages[a.page];
     if (!page) continue;
 
@@ -242,6 +307,34 @@ export async function applyAnnotations(file: File, annotations: Annotation[]): P
             }
           }
         }
+        break;
+      }
+
+      case 'textblock': {
+        // Extraction measured everything from the crop box origin, which is
+        // what pdf.js renders from; drawing has to start from the same corner.
+        const crop = page.getCropBox();
+        const ox = crop.x;
+        const oy = crop.y;
+
+        const body = sanitizeForStandardFont(a.text);
+        if (!body.trim()) break;
+
+        const font = await getFont(a.font);
+        const lines = wrapText(body, a.font, a.size, a.box.width, metrics);
+        lines.forEach((line, index) => {
+          const baseline = oy + a.box.top - a.ascent - index * a.lineHeight;
+          for (const run of layoutLine(line, a.font, a.size, a.box.width, a.align, metrics)) {
+            page.drawText(run.text, {
+              x: ox + a.box.x + run.x,
+              y: baseline,
+              size: a.size,
+              font,
+              color: hexToRgb(a.color),
+              opacity: a.opacity,
+            });
+          }
+        });
         break;
       }
 
