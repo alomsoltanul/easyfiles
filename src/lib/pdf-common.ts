@@ -158,3 +158,57 @@ export function renderedSize(w: number, h: number, rotation: number) {
   const r = ((rotation % 360) + 360) % 360;
   return r === 90 || r === 270 ? { width: h, height: w } : { width: w, height: h };
 }
+
+/**
+ * Inverse of `visualPointToPdf` — take a point in unrotated PDF user space
+ * (relative to the page origin) back to 0..1 coordinates on the rendered page.
+ */
+export function pdfPointToVisual(
+  px: number,
+  py: number,
+  w: number,
+  h: number,
+  rotation: number
+): { x: number; y: number } {
+  const r = ((rotation % 360) + 360) % 360;
+  switch (r) {
+    case 90:
+      return { x: py / h, y: px / w };
+    case 180:
+      return { x: 1 - px / w, y: py / h };
+    case 270:
+      return { x: 1 - py / h, y: 1 - px / w };
+    default:
+      return { x: px / w, y: 1 - py / h };
+  }
+}
+
+/** Inverse of `visualRectToPdf`. `rect.y` is the PDF-space *bottom* edge. */
+export function pdfRectToVisual(
+  rect: PdfRect,
+  w: number,
+  h: number,
+  rotation: number
+): NormRect {
+  const r = ((rotation % 360) + 360) % 360;
+  const { x, y, width, height } = rect;
+  switch (r) {
+    case 90:
+      return { x: y / h, y: x / w, width: height / h, height: width / w };
+    case 180:
+      return { x: 1 - (x + width) / w, y: y / h, width: width / w, height: height / h };
+    case 270:
+      return { x: 1 - (y + height) / h, y: 1 - (x + width) / w, width: height / h, height: width / w };
+    default:
+      return { x: x / w, y: 1 - (y + height) / h, width: width / w, height: height / h };
+  }
+}
+
+/**
+ * How far a run of horizontal PDF text is turned when the page is displayed
+ * with its /Rotate applied. Text laid out along +x in user space runs to the
+ * right at 0°, downwards at 90°, and so on.
+ */
+export function textScreenAngle(rotation: number): number {
+  return ((rotation % 360) + 360) % 360;
+}

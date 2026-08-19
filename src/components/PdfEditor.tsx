@@ -10,14 +10,33 @@ import {
 import { finalizeEdit, type ExportMode } from '@/lib/pdf-edit-export';
 import { renderedSize } from '@/lib/pdf-common';
 import { getPageGeometry, renderPDFThumbnails } from '@/lib/pdf-render';
+import {
+  ASCENT_RATIO,
+  extractPageTextLayer,
+  forgetTextLayerCache,
+  layoutBlocks,
+  type BlockEdit,
+  type LiveBlock,
+  type PageTextLayer,
+} from '@/lib/pdf-text-layer';
+import {
+  getTextMetrics,
+  isBoldFont,
+  isItalicFont,
+  restyleFont,
+  unsupportedGlyphs,
+  type TextAlign,
+  type TextMetrics,
+} from '@/lib/pdf-text-metrics';
 import { formatFileSize } from '@/lib/converters';
 import { PageStage, downloadBlob } from './pdf/shared';
+import TextBlockLayer from './pdf/TextBlockLayer';
 
 /* ------------------------------------------------------------------ */
 /* Types + constants                                                   */
 /* ------------------------------------------------------------------ */
 
-type Tool = 'select' | 'text' | 'draw' | 'rect' | 'ellipse' | 'line' | 'arrow' | 'highlight' | 'image';
+type Tool = 'edittext' | 'select' | 'text' | 'draw' | 'rect' | 'ellipse' | 'line' | 'arrow' | 'highlight' | 'image';
 
 const SHAPE_TOOLS: { value: Tool; label: string }[] = [
   { value: 'rect', label: 'Rectangle' },
@@ -27,6 +46,7 @@ const SHAPE_TOOLS: { value: Tool; label: string }[] = [
 ];
 
 const TOOL_HINT: Record<Tool, string> = {
+  edittext: 'Click any sentence, heading or table cell to retype it. The rest of the column reflows as you type.',
   select: 'Click an object to select it. Drag to move, Delete to remove.',
   text: 'Click on the page to drop a text box, then edit it on the right.',
   draw: 'Drag to draw freehand. Stays vector at any zoom.',
@@ -42,6 +62,19 @@ const FONT_KEYS = Object.keys(ANNOTATION_FONTS) as AnnotationFontKey[];
 
 const SWATCHES = ['#201e1d', '#ec3013', '#605d5d', '#1d4ed8', '#047857', '#ca8a04', '#ffffff'];
 
+const OBJECT_NAMES: Record<string, string> = {
+  text: 'Text', image: 'Image', draw: 'Drawing', rect: 'Rectangle',
+  ellipse: 'Ellipse', line: 'Line', arrow: 'Arrow', highlight: 'Highlight',
+  textblock: 'Document text',
+};
+
+const ALIGNMENTS: { value: TextAlign; label: string }[] = [
+  { value: 'left', label: 'Left' },
+  { value: 'center', label: 'Centre' },
+  { value: 'right', label: 'Right' },
+  { value: 'justify', label: 'Justify' },
+];
+
 const MORE_TOOLS = [
   { label: 'Redact', href: '/pdf/redact', d: 'M3 10h18v5H3z' },
   { label: 'Sign', href: '/pdf/sign', d: 'M3 18c4 0 5-12 9-12s2 9 6 9 3-3 3-3' },
@@ -50,6 +83,9 @@ const MORE_TOOLS = [
 ];
 
 type Geometry = { width: number; height: number; rotation: number };
+
+/** One undo step. Retyped text and drawn objects move together. */
+type Snapshot = { annotations: Annotation[]; edits: Record<string, BlockEdit> };
 
 let seq = 0;
 const nextId = () => `a-${++seq}`;
@@ -88,12 +124,21 @@ export default function PdfEditor() {
   const [page, setPage] = useState(0);
   const [loading, setLoading] = useState(false);
 
-  const [tool, setTool] = useState<Tool>('select');
+  const [tool, setTool] = useState<Tool>('edittext');
   const [shapeTool, setShapeTool] = useState<Tool>('rect');
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
-  const [history, setHistory] = useState<Annotation[][]>([]);
-  const [future, setFuture] = useState<Annotation[][]>([]);
+  const [history, setHistory] = useState<Snapshot[]>([]);
+  const [future, setFuture] = useState<Snapshot[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  // The document's own text, rebuilt as editable blocks — see pdf-text-layer.
+  const [metrics, setMetrics] = useState<TextMetrics | null>(null);
+  const [layers, setLayers] = useState<Record<number, PageTextLayer>>({});
+  const [readingText, setReadingText] = useState(false);
+  const [blockEdits, setBlockEdits] = useState<Record<string, BlockEdit>>({});
+  const [activeBlockId, setActiveBlockId] = useState<string | null>(null);
+  const [editingBlockId, setEditingBlockId] = useState<string | null>(null);
+  const [reflow, setReflow] = useState(true);
 
   const [color, setColor] = useState('#ec3013');
   const [fillColor, setFillColor] = useState<string | null>(null);
@@ -134,37 +179,51 @@ export default function PdfEditor() {
 
   /* ---------------------------------------------------------- history */
 
+  // Undo has to restore drawn objects and retyped text together, so both live
+  // in one snapshot. A ref keeps the "state before this change" cheap to read
+  // from inside event handlers.
+  const live = useRef<Snapshot>({ annotations: [], edits: {} });
+  useEffect(() => { live.current = { annotations, edits: blockEdits }; }, [annotations, blockEdits]);
+
+  const pushHistory = useCallback(() => {
+    setHistory((h) => [...h.slice(-49), live.current]);
+    setFuture([]);
+  }, []);
+
   const commit = useCallback((updater: (prev: Annotation[]) => Annotation[]) => {
-    setAnnotations((prev) => {
-      setHistory((h) => [...h.slice(-49), prev]);
-      setFuture([]);
-      return updater(prev);
-    });
+    pushHistory();
+    setAnnotations(updater);
+  }, [pushHistory]);
+
+  const commitEdits = useCallback((updater: (prev: Record<string, BlockEdit>) => Record<string, BlockEdit>) => {
+    pushHistory();
+    setBlockEdits(updater);
+  }, [pushHistory]);
+
+  const restore = useCallback((snapshot: Snapshot) => {
+    setAnnotations(snapshot.annotations);
+    setBlockEdits(snapshot.edits);
+    setSelectedId(null);
+    setEditingBlockId(null);
   }, []);
 
   const undo = useCallback(() => {
     setHistory((h) => {
       if (h.length === 0) return h;
-      const previous = h[h.length - 1];
-      setAnnotations((current) => {
-        setFuture((f) => [current, ...f.slice(0, 49)]);
-        return previous;
-      });
+      setFuture((f) => [live.current, ...f.slice(0, 49)]);
+      restore(h[h.length - 1]);
       return h.slice(0, -1);
     });
-  }, []);
+  }, [restore]);
 
   const redo = useCallback(() => {
     setFuture((f) => {
       if (f.length === 0) return f;
-      const next = f[0];
-      setAnnotations((current) => {
-        setHistory((h) => [...h, current]);
-        return next;
-      });
+      setHistory((h) => [...h, live.current]);
+      restore(f[0]);
       return f.slice(1);
     });
-  }, []);
+  }, [restore]);
 
   /* ------------------------------------------------------------ file */
 
@@ -174,6 +233,7 @@ export default function PdfEditor() {
       setError('That is not a PDF. Pick a .pdf file.');
       return;
     }
+    forgetTextLayerCache();
     setFile(next);
     setError(null);
     setExported(false);
@@ -184,6 +244,10 @@ export default function PdfEditor() {
     setGeometry([]);
     setThumbs([]);
     setSelectedId(null);
+    setLayers({});
+    setBlockEdits({});
+    setActiveBlockId(null);
+    setEditingBlockId(null);
     setZoom(1);
     setExportName(next.name.replace(/\.pdf$/i, '') + '-edited.pdf');
     setLoading(true);
@@ -201,6 +265,7 @@ export default function PdfEditor() {
   }, []);
 
   const reset = useCallback(() => {
+    forgetTextLayerCache();
     setFile(null);
     setGeometry([]);
     setThumbs([]);
@@ -209,10 +274,120 @@ export default function PdfEditor() {
     setHistory([]);
     setFuture([]);
     setSelectedId(null);
+    setLayers({});
+    setBlockEdits({});
+    setActiveBlockId(null);
+    setEditingBlockId(null);
     setError(null);
     setExported(false);
     setPage(0);
   }, []);
+
+  /* ------------------------------------------------------- text layer */
+
+  useEffect(() => {
+    let cancelled = false;
+    getTextMetrics().then(
+      (loaded) => { if (!cancelled) setMetrics(loaded); },
+      () => { if (!cancelled) setError('Font metrics could not be loaded, so text editing is unavailable.'); }
+    );
+    return () => { cancelled = true; };
+  }, []);
+
+  // Reading the text layer means rendering the page and clustering every glyph,
+  // so it happens per page, on demand, the first time it is needed.
+  useEffect(() => {
+    if (!file || tool !== 'edittext' || layers[page]) return;
+    let cancelled = false;
+    setReadingText(true);
+    extractPageTextLayer(file, page).then(
+      (layer) => {
+        if (cancelled) return;
+        setLayers((prev) => ({ ...prev, [page]: layer }));
+        setReadingText(false);
+      },
+      () => {
+        if (cancelled) return;
+        setLayers((prev) => ({ ...prev, [page]: { blocks: [], scanned: true } }));
+        setReadingText(false);
+      }
+    );
+    return () => { cancelled = true; };
+  }, [file, tool, page, layers]);
+
+  useEffect(() => {
+    setActiveBlockId(null);
+    setEditingBlockId(null);
+  }, [page]);
+
+  const liveBlocks = useMemo<LiveBlock[]>(() => {
+    const layer = layers[page];
+    if (!layer || !metrics) return [];
+    return layoutBlocks(layer.blocks, blockEdits, metrics, reflow);
+  }, [layers, page, metrics, blockEdits, reflow]);
+
+  /**
+   * Every page's retyped text, as annotations the writer understands. Only
+   * blocks that changed — or that a change pushed out of place — are included;
+   * everything else keeps the document's original ink.
+   */
+  const textAnnotations = useMemo<Annotation[]>(() => {
+    if (!metrics) return [];
+    const out: Annotation[] = [];
+    for (const [key, layer] of Object.entries(layers)) {
+      const index = Number(key);
+      // A page nobody has touched cannot have a moved or rewritten block, so
+      // there is no reason to re-wrap it on every keystroke.
+      if (!layer.blocks.some((block) => blockEdits[block.id])) continue;
+      for (const item of layoutBlocks(layer.blocks, blockEdits, metrics, reflow)) {
+        if (!item.managed) continue;
+        out.push({
+          id: `tb:${item.block.id}`,
+          page: index,
+          kind: 'textblock',
+          cover: item.block.cover,
+          background: item.background,
+          box: { x: item.block.x, top: item.block.top + item.shift, width: item.block.width },
+          text: item.removed ? '' : item.text,
+          size: item.size,
+          font: item.font,
+          color: item.color,
+          lineHeight: item.lineHeight,
+          align: item.align,
+          ascent: item.size * ASCENT_RATIO,
+          anchors: item.block.glyphs,
+          opacity: 1,
+        });
+      }
+    }
+    return out;
+  }, [layers, blockEdits, metrics, reflow]);
+
+  const activeBlock = useMemo(
+    () => liveBlocks.find((item) => item.block.id === activeBlockId) ?? null,
+    [liveBlocks, activeBlockId]
+  );
+
+  const patchBlock = useCallback((id: string, change: BlockEdit, history = true) => {
+    const apply = (prev: Record<string, BlockEdit>) => ({ ...prev, [id]: { ...prev[id], ...change } });
+    if (history) commitEdits(apply);
+    else setBlockEdits(apply);
+  }, [commitEdits]);
+
+  const openBlock = useCallback((id: string) => {
+    setSelectedId(null);
+    setActiveBlockId(id);
+    setEditingBlockId(id);
+    pushHistory();
+  }, [pushHistory]);
+
+  const resetBlock = useCallback((id: string) => {
+    commitEdits((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  }, [commitEdits]);
 
   /* -------------------------------------------------------- pointers */
 
@@ -227,6 +402,12 @@ export default function PdfEditor() {
   const onPointerDown = useCallback((event: React.PointerEvent) => {
     const point = pointOf(event);
     if (!point || !viewPt) return;
+
+    if (tool === 'edittext') {
+      setActiveBlockId(null);
+      setEditingBlockId(null);
+      return;
+    }
 
     if (tool === 'select') {
       setSelectedId(null);
@@ -370,10 +551,9 @@ export default function PdfEditor() {
     if (!point) return;
     (event.currentTarget as Element).setPointerCapture?.(event.pointerId);
     setSelectedId(id);
-    setHistory((h) => [...h.slice(-49), annotations]);
-    setFuture([]);
+    pushHistory();
     moving.current = { id, lastX: point.x, lastY: point.y };
-  }, [tool, pointOf, annotations]);
+  }, [tool, pointOf, pushHistory]);
 
   /* --------------------------------------------------------- editing */
 
@@ -420,16 +600,24 @@ export default function PdfEditor() {
       if ((event.key === 'Delete' || event.key === 'Backspace') && selectedId) {
         event.preventDefault();
         removeSelected();
+      } else if ((event.key === 'Delete' || event.key === 'Backspace') && activeBlockId) {
+        event.preventDefault();
+        patchBlock(activeBlockId, { removed: true });
       } else if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z') {
         event.preventDefault();
         if (event.shiftKey) redo(); else undo();
+      } else if (event.key === 'Enter' && activeBlockId && !editingBlockId) {
+        event.preventDefault();
+        openBlock(activeBlockId);
       } else if (event.key === 'Escape') {
         setSelectedId(null);
+        setEditingBlockId(null);
+        setActiveBlockId(null);
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [selectedId, removeSelected, undo, redo]);
+  }, [selectedId, removeSelected, undo, redo, activeBlockId, editingBlockId, patchBlock, openBlock]);
 
   /* ----------------------------------------------------------- pages */
 
@@ -452,7 +640,16 @@ export default function PdfEditor() {
       return next;
     });
     setAnnotations((prev) => prev.filter((a) => a.page !== original));
-  }, []);
+    setBlockEdits((prev) => {
+      const ids = new Set((layers[original]?.blocks ?? []).map((block) => block.id));
+      if (ids.size === 0) return prev;
+      const next: Record<string, BlockEdit> = {};
+      for (const [id, edit] of Object.entries(prev)) if (!ids.has(id)) next[id] = edit;
+      return next;
+    });
+    setActiveBlockId(null);
+    setEditingBlockId(null);
+  }, [layers]);
 
   /* ---------------------------------------------------------- export */
 
@@ -465,7 +662,7 @@ export default function PdfEditor() {
       const name = exportName.trim().replace(/(\.pdf)?$/i, '.pdf') || 'edited.pdf';
       const blob = await finalizeEdit({
         file,
-        annotations,
+        annotations: [...textAnnotations, ...annotations],
         pageOrder,
         totalPages: geometry.length,
         mode: exportMode,
@@ -480,10 +677,12 @@ export default function PdfEditor() {
     } finally {
       setBusy(false);
     }
-  }, [file, annotations, pageOrder, geometry.length, exportMode, exportName]);
+  }, [file, annotations, textAnnotations, pageOrder, geometry.length, exportMode, exportName]);
 
   const pct = (n: number) => `${(n * 100).toFixed(4)}%`;
-  const dirty = annotations.length > 0 || pageOrder.length !== geometry.length;
+  const rewrites = textAnnotations.length;
+  const editCount = annotations.length + rewrites;
+  const dirty = editCount > 0 || pageOrder.length !== geometry.length;
 
   /* ------------------------------------------------------------------ */
   /* Upload view                                                         */
@@ -494,11 +693,12 @@ export default function PdfEditor() {
       <div className="mx-auto w-full max-w-[1400px] px-6 py-12 sm:px-10 sm:py-16">
         <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#ec3013]">PDF · Edit</p>
         <h1 className="mt-2.5 max-w-3xl text-[38px] font-extrabold leading-[1.03] tracking-[-0.02em] sm:text-[56px]">
-          Edit any PDF — text, images, pages.
+          Edit the words already in your PDF.
         </h1>
-        <p className="mt-4 max-w-xl text-[15px] leading-relaxed text-[#605d5d] sm:text-base">
-          Add and restyle text, drop in images, draw, highlight, reorder or delete pages. Everything runs in your
-          browser; the file never leaves this device.
+        <p className="mt-4 max-w-2xl text-[15px] leading-relaxed text-[#605d5d] sm:text-base">
+          Click a sentence, a heading or a table cell and retype it. The old words are erased, the new ones are set in
+          their place, and the rest of the column flows around them — just like a word processor. Everything runs in
+          your browser; the file never leaves this device.
         </p>
 
         <div className="my-8 h-0.5 bg-[#201e1d]" />
@@ -538,10 +738,11 @@ export default function PdfEditor() {
             <p className="mb-3 text-[11px] font-bold uppercase tracking-[0.16em] text-[#7d7979]">What you can do</p>
             <div className="border-t-2 border-[#201e1d]">
               {[
-                ['Text', 'Place text boxes, set font, size and colour'],
-                ['Images', 'Drop a logo or photo anywhere on the page'],
-                ['Draw & shapes', 'Freehand, rectangles, ellipses, lines, arrows'],
-                ['Mark up', 'Translucent highlighter over any passage'],
+                ['Rewrite existing text', 'Retype any paragraph, heading or label in place'],
+                ['Delete text', 'Erase words from the page, background colour matched'],
+                ['Columns & tables', 'Cells and columns re-wrap and push each other along'],
+                ['Add text & images', 'New text boxes, logos and photos anywhere'],
+                ['Draw & mark up', 'Freehand, shapes, arrows, translucent highlighter'],
                 ['Pages', 'Reorder or delete pages before you export'],
               ].map(([title, body]) => (
                 <div key={title} className="flex items-start gap-3 border-b border-[#d7d3d3] py-3.5">
@@ -560,7 +761,7 @@ export default function PdfEditor() {
                 <p className="mt-1 text-xs text-[#605d5d]">in-browser, no upload</p>
               </div>
               <div className="bg-[#f3f2f2] p-4">
-                <p className="text-2xl font-extrabold">9</p>
+                <p className="text-2xl font-extrabold">10</p>
                 <p className="mt-1 text-xs text-[#605d5d]">editing tools</p>
               </div>
             </div>
@@ -618,8 +819,9 @@ export default function PdfEditor() {
         <div className="min-w-0">
           <p className="truncate text-sm font-extrabold tracking-[-0.01em]">{file.name}</p>
           <p className="mt-px text-[11px] text-[#7d7979]">
-            {formatFileSize(file.size)} · {pageOrder.length} page{pageOrder.length === 1 ? '' : 's'} · {annotations.length} edit
-            {annotations.length === 1 ? '' : 's'}
+            {formatFileSize(file.size)} · {pageOrder.length} page{pageOrder.length === 1 ? '' : 's'} · {editCount} edit
+            {editCount === 1 ? '' : 's'}
+            {rewrites > 0 ? ` · ${rewrites} rewritten` : ''}
           </p>
         </div>
 
@@ -679,6 +881,7 @@ export default function PdfEditor() {
         {/* Tool rail */}
         <div className="flex w-[118px] flex-none flex-col overflow-y-auto border-r-2 border-[#201e1d] py-2">
           <p className="mx-3 mb-2 mt-1 text-[10px] font-bold uppercase tracking-[0.16em] text-[#7d7979]">Tools</p>
+          {railButton('edittext', 'Edit text', 'M4 7V5h11v2M9.5 5v11M7 16h5M15 12h5M17.5 12v8')}
           {railButton('select', 'Select', 'M3 3l7.5 18 2.5-7.5L20.5 11 3 3z')}
           {railButton('text', 'Text', 'M4 6V4h16v2M12 4v16M9 20h6')}
           {railButton('image', 'Image', 'M4 16l4-4 3 3 5-5 4 4M4 6h16v12H4z')}
@@ -763,7 +966,34 @@ export default function PdfEditor() {
         </div>
 
         {/* Canvas */}
-        <div className="flex min-w-0 flex-1 justify-center overflow-auto bg-[#eae9e9] p-6">
+        <div className="flex min-w-0 flex-1 flex-col items-center overflow-auto bg-[#eae9e9] p-6">
+          {tool === 'edittext' && (
+            <div className="mb-4 w-full max-w-[900px] border-l-4 border-[#201e1d] bg-white px-4 py-2.5 text-[12px] leading-snug">
+              {readingText || !metrics ? (
+                <span className="font-bold text-[#605d5d]">Reading the text on this page…</span>
+              ) : layers[page]?.scanned ? (
+                <span className="text-[#7c1405]">
+                  <b>No text layer on this page.</b> It is a scan or an image, so there are no words to retype.{' '}
+                  <Link href="/pdf/ocr" className="font-bold underline">Run OCR first</Link>, then come back.
+                </span>
+              ) : liveBlocks.length === 0 ? (
+                <span className="font-bold text-[#605d5d]">Nothing editable found on this page.</span>
+              ) : (
+                <span className="text-[#605d5d]">
+                  <b className="text-[#201e1d]">{liveBlocks.length} editable region{liveBlocks.length === 1 ? '' : 's'}</b> on this page
+                  {liveBlocks.some((b) => b.block.cell) ? ', table cells included' : ''}. Click one to retype it — the rest of
+                  the column reflows around it.
+                  {rewrites > 0 ? <b className="text-[#ae1800]"> {rewrites} rewritten.</b> : ''}
+                </span>
+              )}
+              {rewrites > 0 && liveBlocks.some((b) => b.wall) && (
+                <span className="mt-1.5 block text-[#7c1405]">
+                  Text below uses characters the standard PDF fonts cannot draw, so it has to stay where it is —
+                  the column stops flowing there. Check nothing has run into it.
+                </span>
+              )}
+            </div>
+          )}
           {loading ? (
             <p className="mt-16 text-sm font-bold text-[#7d7979]">Reading document…</p>
           ) : (
@@ -861,6 +1091,22 @@ export default function PdfEditor() {
                   </svg>
                 }
               >
+                {pageGeometry && metrics && (
+                  <TextBlockLayer
+                    blocks={liveBlocks}
+                    geometry={pageGeometry}
+                    stage={stage}
+                    ptToPx={ptToPx}
+                    metrics={metrics}
+                    activeId={activeBlockId}
+                    editingId={editingBlockId}
+                    interactive={tool === 'edittext'}
+                    onActivate={openBlock}
+                    onText={(id, text) => patchBlock(id, { text }, false)}
+                    onDone={() => setEditingBlockId(null)}
+                  />
+                )}
+
                 {pageAnnotations.map((a) => {
                   if (a.kind === 'text') {
                     return (
@@ -911,11 +1157,186 @@ export default function PdfEditor() {
           <div className="border-b border-[#d7d3d3] px-4 py-3.5">
             <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#7d7979]">Properties</p>
             <p className="mt-1 text-base font-extrabold tracking-[-0.01em]">
-              {selected ? { text: 'Text', image: 'Image', draw: 'Drawing', rect: 'Rectangle', ellipse: 'Ellipse', line: 'Line', arrow: 'Arrow', highlight: 'Highlight' }[selected.kind] : 'Document'}
+              {selected
+                ? OBJECT_NAMES[selected.kind] ?? 'Object'
+                : activeBlock
+                  ? activeBlock.block.cell ? 'Table cell' : 'Document text'
+                  : 'Document'}
             </p>
           </div>
 
           <div className="flex flex-col gap-4 p-4">
+            {activeBlock && (
+              <>
+                <label className="block">
+                  <Label>{activeBlock.block.cell ? 'Cell text' : 'Text'}</Label>
+                  <textarea
+                    value={activeBlock.text}
+                    onChange={(e) => patchBlock(activeBlock.block.id, { text: e.target.value }, false)}
+                    onFocus={() => setEditingBlockId(null)}
+                    rows={5}
+                    className={`${fieldClass} resize-y leading-relaxed`}
+                  />
+                </label>
+
+                {(() => {
+                  const missing = unsupportedGlyphs(activeBlock.text);
+                  if (missing.length === 0) return null;
+                  return (
+                    <div className="flex items-start gap-2 border-l-[3px] border-[#ec3013] bg-[#fff2ef] px-3 py-2.5">
+                      <span className="mt-px flex-none text-[#ae1800]"><Icon d="M12 8h.01M11 12h1v4h1" size={14} width={2} /></span>
+                      <span className="text-[11px] leading-snug text-[#7c1405]">
+                        The standard PDF fonts cannot draw{' '}
+                        <b>{missing.slice(0, 6).join(' ')}{missing.length > 6 ? '…' : ''}</b>. Deleting this text works
+                        fine, but anything you retype loses those characters.
+                      </span>
+                    </div>
+                  );
+                })()}
+
+                <div className="grid grid-cols-[1fr_74px] gap-2.5">
+                  <label className="block">
+                    <Label>Font</Label>
+                    <select
+                      value={activeBlock.font}
+                      onChange={(e) => patchBlock(activeBlock.block.id, { font: e.target.value as AnnotationFontKey })}
+                      className={fieldClass}
+                    >
+                      {FONT_KEYS.map((key) => <option key={key} value={key}>{key}</option>)}
+                    </select>
+                  </label>
+                  <label className="block">
+                    <Label>Size</Label>
+                    <input
+                      type="number" min={4} max={200} step={0.5}
+                      value={activeBlock.size}
+                      onChange={(e) => patchBlock(activeBlock.block.id, { size: Number(e.target.value) || activeBlock.size })}
+                      className={fieldClass}
+                    />
+                  </label>
+                </div>
+
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => patchBlock(activeBlock.block.id, { font: restyleFont(activeBlock.font, { bold: !isBoldFont(activeBlock.font) }) })}
+                    className={`flex-1 border-2 py-2 text-sm font-extrabold ${isBoldFont(activeBlock.font) ? 'border-[#201e1d] bg-[#201e1d] text-[#f3f2f2]' : 'border-[#bab6b6]'}`}
+                  >
+                    B
+                  </button>
+                  <button
+                    onClick={() => patchBlock(activeBlock.block.id, { font: restyleFont(activeBlock.font, { italic: !isItalicFont(activeBlock.font) }) })}
+                    className={`flex-1 border-2 py-2 text-sm italic ${isItalicFont(activeBlock.font) ? 'border-[#201e1d] bg-[#201e1d] text-[#f3f2f2]' : 'border-[#bab6b6]'}`}
+                  >
+                    I
+                  </button>
+                  <label className="flex-[2]">
+                    <input
+                      type="number" min={1} step={0.5}
+                      value={activeBlock.lineHeight}
+                      onChange={(e) => patchBlock(activeBlock.block.id, { lineHeight: Number(e.target.value) || activeBlock.lineHeight })}
+                      title="Line height in points"
+                      className={`${fieldClass} py-2`}
+                    />
+                  </label>
+                </div>
+
+                <div>
+                  <Label>Alignment</Label>
+                  <div className="grid grid-cols-4 gap-1.5">
+                    {ALIGNMENTS.map((option) => (
+                      <button
+                        key={option.value}
+                        onClick={() => patchBlock(activeBlock.block.id, { align: option.value })}
+                        className={`border-2 py-1.5 text-[10px] font-bold ${activeBlock.align === option.value ? 'border-[#ec3013] bg-[#fff2ef] text-[#ae1800]' : 'border-[#d7d3d3]'}`}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <Label>Text colour</Label>
+                  <div className="grid grid-cols-8 gap-1.5">
+                    {SWATCHES.map((swatch) => (
+                      <button
+                        key={swatch}
+                        onClick={() => patchBlock(activeBlock.block.id, { color: swatch })}
+                        title={swatch}
+                        className={`h-7 w-7 border-2 ${activeBlock.color.toLowerCase() === swatch ? 'border-[#201e1d]' : 'border-[#d7d3d3]'}`}
+                        style={{ background: swatch }}
+                      />
+                    ))}
+                    <input
+                      type="color"
+                      value={activeBlock.color}
+                      onChange={(e) => patchBlock(activeBlock.block.id, { color: e.target.value })}
+                      className="h-7 w-7 cursor-pointer border-2 border-[#d7d3d3] bg-white p-0"
+                    />
+                  </div>
+                </div>
+
+                <label className="flex items-center justify-between gap-3">
+                  <span>
+                    <Label>Paper colour</Label>
+                    <span className="block text-[11px] leading-snug text-[#7d7979]">
+                      Painted over the original words. Nudge it if the patch shows.
+                    </span>
+                  </span>
+                  <input
+                    type="color"
+                    value={activeBlock.background}
+                    onChange={(e) => patchBlock(activeBlock.block.id, { background: e.target.value })}
+                    className="h-9 w-9 flex-none cursor-pointer border-2 border-[#d7d3d3] bg-white p-0"
+                  />
+                </label>
+
+                <label className="flex items-start gap-2.5 border border-[#d7d3d3] bg-white px-3 py-2.5">
+                  <input
+                    type="checkbox"
+                    checked={reflow}
+                    onChange={(e) => setReflow(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 flex-none accent-[#ec3013]"
+                  />
+                  <span>
+                    <span className="block text-xs font-bold">Reflow the column</span>
+                    <span className="block text-[11px] leading-snug text-[#7d7979]">
+                      Paragraphs and table rows below move as this one grows or shrinks.
+                    </span>
+                  </span>
+                </label>
+
+                <div className="border-t border-[#d7d3d3] pt-3">
+                  {[
+                    ['Measure', `${Math.round(activeBlock.block.width)} pt`],
+                    ['Lines', `${activeBlock.lines.length} of ${activeBlock.block.naturalLines} originally`],
+                    ['Shifted', `${activeBlock.shift === 0 ? 'no' : `${Math.abs(Math.round(activeBlock.shift))} pt ${activeBlock.shift < 0 ? 'down' : 'up'}`}`],
+                  ].map(([k, v]) => (
+                    <div key={k} className="flex justify-between border-b border-[#eae7e7] py-1.5 text-xs">
+                      <span className="text-[#7d7979]">{k}</span>
+                      <span className="font-bold">{v}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => patchBlock(activeBlock.block.id, { removed: !activeBlock.removed })}
+                    className="flex-1 border-2 border-[#ec3013] px-3 py-2.5 text-left text-xs font-bold text-[#ae1800] hover:bg-[#fff2ef]"
+                  >
+                    {activeBlock.removed ? 'Put text back' : 'Erase text'}
+                  </button>
+                  <button
+                    onClick={() => resetBlock(activeBlock.block.id)}
+                    disabled={!activeBlock.changed}
+                    className="flex-1 border-2 border-[#201e1d] px-3 py-2.5 text-left text-xs font-bold hover:bg-[#eae7e7] disabled:opacity-35"
+                  >
+                    Restore original
+                  </button>
+                </div>
+              </>
+            )}
+
             {selected?.kind === 'text' && (
               <>
                 <label className="block">
@@ -1068,7 +1489,7 @@ export default function PdfEditor() {
               </>
             )}
 
-            {!selected && (
+            {!selected && !activeBlock && (
               <>
                 <p className="text-[13px] leading-relaxed text-[#605d5d]">
                   Nothing selected. Pick a tool on the left and click or drag on the page — or click an object you already
@@ -1079,7 +1500,9 @@ export default function PdfEditor() {
                   {[
                     ['Pages', `${pageOrder.length}${pageOrder.length !== geometry.length ? ` of ${geometry.length}` : ''}`],
                     ['Objects on page', String(pageAnnotations.length)],
-                    ['Total edits', String(annotations.length)],
+                    ['Editable text regions', String(liveBlocks.length)],
+                    ['Rewritten text', String(rewrites)],
+                    ['Total edits', String(editCount)],
                     ['Undo steps', String(history.length)],
                   ].map(([k, v]) => (
                     <div key={k} className="flex justify-between border-b border-[#eae7e7] py-1.5 text-xs">
@@ -1088,9 +1511,16 @@ export default function PdfEditor() {
                     </div>
                   ))}
                 </div>
-                {annotations.length > 0 && (
+                {editCount > 0 && (
                   <button
-                    onClick={() => { commit(() => []); setSelectedId(null); }}
+                    onClick={() => {
+                      pushHistory();
+                      setAnnotations([]);
+                      setBlockEdits({});
+                      setSelectedId(null);
+                      setActiveBlockId(null);
+                      setEditingBlockId(null);
+                    }}
                     className="border-2 border-[#201e1d] px-3 py-2.5 text-left text-xs font-bold hover:bg-[#eae7e7]"
                   >
                     Clear all edits
@@ -1101,6 +1531,52 @@ export default function PdfEditor() {
           </div>
         </div>
       </div>
+
+      {/* Mobile text-block sheet */}
+      {activeBlock && !selected && (
+        <div className="flex-none border-t-2 border-[#201e1d] p-3 xl:hidden">
+          <div className="mb-2 flex items-center gap-2">
+            <span className="bg-[#ec3013] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.1em] text-white">
+              {activeBlock.block.cell ? 'cell' : 'text'}
+            </span>
+            <span className="text-[11px] text-[#7d7979]">{activeBlock.size}pt · {activeBlock.align}</span>
+            <button onClick={() => { setActiveBlockId(null); setEditingBlockId(null); }} className="ml-auto text-xs font-bold text-[#605d5d]">Done</button>
+          </div>
+          <textarea
+            value={activeBlock.text}
+            onChange={(e) => patchBlock(activeBlock.block.id, { text: e.target.value }, false)}
+            rows={2}
+            className={`${fieldClass} resize-none`}
+          />
+          <div className="mt-2 flex gap-2">
+            <button
+              onClick={() => patchBlock(activeBlock.block.id, { size: Math.max(4, activeBlock.size - 1) })}
+              className="min-h-11 flex-1 border-2 border-[#201e1d] text-sm font-bold"
+            >
+              A−
+            </button>
+            <button
+              onClick={() => patchBlock(activeBlock.block.id, { size: activeBlock.size + 1 })}
+              className="min-h-11 flex-1 border-2 border-[#201e1d] text-sm font-bold"
+            >
+              A+
+            </button>
+            <button
+              onClick={() => patchBlock(activeBlock.block.id, { removed: !activeBlock.removed })}
+              className="min-h-11 flex-1 border-2 border-[#ec3013] text-sm font-bold text-[#ae1800]"
+            >
+              {activeBlock.removed ? 'Undo' : 'Erase'}
+            </button>
+            <button
+              onClick={() => resetBlock(activeBlock.block.id)}
+              disabled={!activeBlock.changed}
+              className="min-h-11 flex-1 border-2 border-[#201e1d] text-sm font-bold disabled:opacity-35"
+            >
+              Reset
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Mobile selection sheet */}
       {selected && (
@@ -1181,7 +1657,7 @@ export default function PdfEditor() {
               </div>
 
               <div className="flex justify-between border-t border-[#d7d3d3] pt-3 text-xs">
-                <span className="text-[#7d7979]">{pageOrder.length} pages · {annotations.length} edits</span>
+                <span className="text-[#7d7979]">{pageOrder.length} pages · {editCount} edits{rewrites > 0 ? ` · ${rewrites} rewritten` : ''}</span>
                 <span className="font-bold">{exportMode === 'flat' ? 'Rasterised output' : 'Vector output'}</span>
               </div>
 
