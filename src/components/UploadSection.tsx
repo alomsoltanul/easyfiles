@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useCallback, useRef, useState } from 'react';
+import { useFileLimits } from '@/hooks/useFileLimits';
+import LimitNotice from './LimitNotice';
 
 interface Props {
   accept: string;
@@ -45,13 +47,20 @@ export default function UploadSection({
   const [comingSoon, setComingSoon] = useState<'gdrive' | 'dropbox' | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const { entitlements, admit, blocked, clearBlock } = useFileLimits();
+
   const handleFiles = useCallback((list: FileList | File[]) => {
     const arr = Array.from(list);
     const kept = filter ? arr.filter(filter) : arr;
     if (kept.length === 0) return;
-    onFiles(kept);
-    if (onFile && kept[0]) onFile(kept[0]);
-  }, [onFile, onFiles, filter]);
+
+    /* Plan limits: file size and batch count, before anything is read. */
+    const allowed = admit(kept);
+    if (!allowed) return;
+
+    onFiles(allowed);
+    if (onFile && allowed[0]) onFile(allowed[0]);
+  }, [onFile, onFiles, filter, admit]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -61,6 +70,10 @@ export default function UploadSection({
 
   return (
     <div className="space-y-4">
+      {blocked && (
+        <LimitNotice block={blocked} signedIn={entitlements.signedIn} onDismiss={clearBlock} />
+      )}
+
       <div
         onDragOver={(e) => { e.preventDefault(); setHover(true); }}
         onDragLeave={() => setHover(false)}

@@ -1,4 +1,5 @@
 import React from 'react';
+import { accessForSlug, type ToolAccess } from './tool-access';
 
 /* ------------------------------------------------------------------ */
 /* Icons                                                               */
@@ -172,9 +173,12 @@ export interface Tool {
   icon: IconKey;
   keywords?: string[];
   badge?: 'New' | 'Popular';
+  /** 'pro' tools need any paid plan; derived from PRO_TOOL_SLUGS */
+  access: ToolAccess;
 }
 
-export const TOOLS: Tool[] = [
+/** Entries are written without `access`; it is applied once, below. */
+const TOOL_ENTRIES: Omit<Tool, 'access'>[] = [
   /* ---------------------------- image ---------------------------- */
   {
     label: 'Image Converter', href: '/image/convert', dept: 'image', group: 'Convert', icon: 'swap',
@@ -529,7 +533,24 @@ export const TOOLS: Tool[] = [
 /* Derived helpers                                                     */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Which tools are paid-only lives in tool-access.ts, keyed by href, so server
+ * code and the entitlement layer can read it without importing this JSX module.
+ */
+export const TOOLS: Tool[] = TOOL_ENTRIES.map((tool) => ({
+  ...tool,
+  access: accessForSlug(tool.href),
+}));
+
 export const TOOL_COUNT = TOOLS.length;
+
+export const FREE_TOOLS = TOOLS.filter((t) => t.access === 'free');
+export const PRO_TOOLS = TOOLS.filter((t) => t.access === 'pro');
+export const FREE_TOOL_COUNT = FREE_TOOLS.length;
+
+export function toolByHref(href: string): Tool | undefined {
+  return TOOLS.find((t) => t.href === href);
+}
 
 export function toolsByDept(dept: DeptId): Tool[] {
   return TOOLS.filter((t) => t.dept === dept);

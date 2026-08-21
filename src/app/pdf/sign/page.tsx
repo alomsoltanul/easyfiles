@@ -1,5 +1,6 @@
 import PdfSign from '@/components/PdfSign';
 import ToolLayout from '@/components/ToolLayout';
+import ToolGate from '@/components/ToolGate';
 import InfoCards, { PrivacyIcon, SpeedIcon } from '@/components/InfoCards';
 
 export const dynamic = 'force-dynamic';
@@ -17,7 +18,9 @@ export default function PdfSignPage() {
         ]} />
       }
     >
-      <PdfSign />
+      <ToolGate slug="/pdf/sign">
+        <PdfSign />
+      </ToolGate>
     </ToolLayout>
   );
 }

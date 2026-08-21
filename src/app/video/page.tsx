@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import VideoDownloader from '@/components/VideoDownloader';
+import ToolGate from '@/components/ToolGate';
 import { PLATFORM_THEMES, PLATFORM_PAGES } from '@/components/videoPlatforms';
 
 export const metadata: Metadata = {
@@ -14,7 +15,9 @@ export const metadata: Metadata = {
 export default function VideoPage() {
   return (
     <>
-      <VideoDownloader />
+      <ToolGate slug="/video">
+        <VideoDownloader />
+      </ToolGate>
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 pb-12">
         <h2 className="text-sm font-bold text-slate-800 mb-3">Platform-specific downloaders</h2>

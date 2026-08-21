@@ -1,5 +1,6 @@
 import { Archivo } from 'next/font/google';
 import PdfEditor from '@/components/PdfEditor';
+import ToolGate from '@/components/ToolGate';
 
 const archivo = Archivo({
   subsets: ['latin'],
@@ -17,7 +18,9 @@ export const dynamic = 'force-dynamic';
 export default function PdfEditPage() {
   return (
     <div className={`${archivo.className} bg-[#f3f2f2] text-[#201e1d] antialiased`}>
-      <PdfEditor />
+      <ToolGate slug="/pdf/edit">
+        <PdfEditor />
+      </ToolGate>
     </div>
   );
 }

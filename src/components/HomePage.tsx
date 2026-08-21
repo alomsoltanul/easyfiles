@@ -370,6 +370,11 @@ export default function HomePage() {
                             {tool.badge}
                           </span>
                         )}
+                        {tool.access === 'pro' && (
+                          <span className="shrink-0 rounded-full bg-violet-100 px-1.5 py-px text-[9px] font-bold uppercase tracking-wide text-violet-700">
+                            Pro
+                          </span>
+                        )}
                       </div>
                       <p className="mt-1.5 line-clamp-2 text-xs leading-relaxed text-slate-500">{tool.description}</p>
                     </div>

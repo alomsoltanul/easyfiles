@@ -1,5 +1,6 @@
 import PdfForms from '@/components/PdfForms';
 import ToolLayout from '@/components/ToolLayout';
+import ToolGate from '@/components/ToolGate';
 import InfoCards, { PrivacyIcon, SpeedIcon, BulkIcon } from '@/components/InfoCards';
 
 export const metadata = {
@@ -22,7 +23,9 @@ export default function PdfFormsPage() {
         ]} />
       }
     >
-      <PdfForms />
+      <ToolGate slug="/pdf/forms">
+        <PdfForms />
+      </ToolGate>
     </ToolLayout>
   );
 }
