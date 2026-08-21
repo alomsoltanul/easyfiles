@@ -2,6 +2,7 @@
 
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { PLATFORM_THEMES, type PlatformKey } from './videoPlatforms';
+import { currentSlug, logRun } from '@/lib/usage';
 
 interface QualityOption {
   id: string;
@@ -135,6 +136,7 @@ export default function VideoDownloader({ platform: fixedPlatform, title, descri
     setError(null);
     setNotice(null);
     setStatusMessage('Preparing your file…');
+    const startedAt = Date.now();
 
     try {
       const prepare = await fetch('/api/video/prepare', {
@@ -175,9 +177,24 @@ export default function VideoDownloader({ platform: fixedPlatform, title, descri
           : 'Download started. Check your browser downloads.',
       );
       setTimeout(() => setStatusMessage(''), 4000);
+
+      logRun({
+        slug: currentSlug(),
+        fileCount: 1,
+        outputBytes: typeof probeData.size === 'number' ? probeData.size : 0,
+        durationMs: Date.now() - startedAt,
+        status: 'success',
+      });
     } catch (err) {
       setError((err as Error).message || 'Download failed. Please try again.');
       setStatusMessage('');
+      logRun({
+        slug: currentSlug(),
+        fileCount: 1,
+        durationMs: Date.now() - startedAt,
+        status: 'error',
+        errorCode: (err as Error).message?.slice(0, 64) ?? 'unknown',
+      });
     } finally {
       setIsDownloading(false);
     }

@@ -6,6 +6,7 @@ import UploadZone from './UploadZone';
 import CompressionSettings, { ResizePreset } from './CompressionSettings';
 import ConversionResults from './ConversionResults';
 import FormatSelector, { detectInputFormat, getInputFormatLabel, getOutputExtension } from './FormatSelector';
+import { logImageFailure, logImageRun } from '@/lib/usage-image';
 
 type Mode = 'single' | 'bulk';
 
@@ -45,6 +46,7 @@ export default function ImageConverter() {
     setIsConverting(true);
     setError(null);
     setProgress(0);
+    const startedAt = Date.now();
 
     try {
       const converted = await convertBulkToFormat(
@@ -62,8 +64,10 @@ export default function ImageConverter() {
       }
 
       setResults(converted);
+      logImageRun(converted, startedAt);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Conversion failed. Please try again.');
+      logImageFailure(files.length, startedAt, err instanceof Error ? err.message : 'unknown');
     } finally {
       setIsConverting(false);
     }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isAllowedUrl, normalizeUrl, checkRateLimit, isValidFormat, isValidQuality } from '@/lib/video-security';
 import { signDownloadToken } from '@/lib/video-token';
+import { checkVideoQuota } from '@/lib/server-quota';
 
 export const maxDuration = 30;
 export const dynamic = 'force-dynamic';
@@ -45,6 +46,16 @@ export async function POST(request: NextRequest) {
   }
   if (!isValidQuality(quality)) {
     return NextResponse.json({ error: 'Unsupported quality option.', code: 'QUALITY_INVALID' }, { status: 400 });
+  }
+
+  /*
+   * Plan limit, checked here rather than in /download: a token is only minted
+   * on this route, so this is the one gate every download has to pass. The IP
+   * rate limiter above still covers anonymous callers.
+   */
+  const quota = await checkVideoQuota();
+  if (!quota.ok) {
+    return NextResponse.json({ error: quota.message, code: quota.code }, { status: 429 });
   }
 
   const url = normalizeUrl(rawUrl);

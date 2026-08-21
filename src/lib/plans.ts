@@ -174,18 +174,27 @@ export function getPlan(id: string | null | undefined): Plan {
   return id && isPlanId(id) ? PLANS[id] : PLANS.anon;
 }
 
+/**
+ * The price helpers take just the two amounts, not a whole Plan, so the pricing
+ * UI can pass its own view model without casting.
+ */
+export interface Priced {
+  monthlyPrice: number;
+  yearlyPrice: number;
+}
+
 /** Cents for the chosen interval. */
-export function priceFor(plan: Plan, interval: BillingInterval): number {
+export function priceFor(plan: Priced, interval: BillingInterval): number {
   return interval === 'year' ? plan.yearlyPrice : plan.monthlyPrice;
 }
 
 /** What a yearly plan works out to per month, in cents — used on the pricing cards. */
-export function monthlyEquivalent(plan: Plan): number {
+export function monthlyEquivalent(plan: Priced): number {
   return Math.round(plan.yearlyPrice / 12);
 }
 
 /** Whole-percent discount of yearly against 12x monthly. */
-export function yearlySavingsPercent(plan: Plan): number {
+export function yearlySavingsPercent(plan: Priced): number {
   if (plan.monthlyPrice <= 0) return 0;
   const full = plan.monthlyPrice * 12;
   return Math.round(((full - plan.yearlyPrice) / full) * 100);

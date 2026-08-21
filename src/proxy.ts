@@ -113,9 +113,10 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
 export const config = {
   matcher: [
     /*
-     * Everything except Next internals and static assets. Auth cookies only
-     * matter on document and route-handler requests.
+     * Everything except Next internals, static assets and the Stripe webhook.
+     * The webhook authenticates with a signature, never a cookie — running the
+     * session refresh on it would be pure latency on a retry-sensitive path.
      */
-    '/((?!_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|woff|woff2|ttf|mp4)$).*)',
+    '/((?!_next/static|_next/image|api/webhooks|favicon.ico|robots.txt|sitemap.xml|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|woff|woff2|ttf|mp4)$).*)',
   ],
 };

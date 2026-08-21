@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { currentSlug, logRun } from '@/lib/usage';
 import CodeEditor from './CodeEditor';
 
 type DiffLine = {
@@ -94,6 +95,29 @@ export default function JsonDiff() {
       return { lineDiff: null, semDiff: null, equal: false, error: e instanceof Error ? e.message : 'Invalid JSON' };
     }
   }, [left, right]);
+
+  /*
+   * This tool has no copy or download button to hang a run on, so record one
+   * once the user has stopped typing on a diff that actually parsed. Debounced,
+   * and guarded on the input pair, so editing doesn't log on every keystroke.
+   */
+  const loggedPair = useRef<string | null>(null);
+  useEffect(() => {
+    if (!lineDiff || error) return;
+    const pair = `${left.length}:${right.length}`;
+    if (loggedPair.current === pair) return;
+
+    const timer = setTimeout(() => {
+      loggedPair.current = pair;
+      logRun({
+        slug: currentSlug(),
+        fileCount: 2,
+        inputBytes: left.length + right.length,
+        status: 'success',
+      });
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [lineDiff, error, left, right]);
 
   const lineColors: Record<string, string> = {
     equal: 'text-slate-600',

@@ -223,6 +223,10 @@ export interface Database {
         Args: Record<string, never>;
         Returns: boolean;
       };
+      prune_tool_history: {
+        Args: Record<string, never>;
+        Returns: number;
+      };
       record_tool_run: {
         Args: {
           p_tool_slug: string;
