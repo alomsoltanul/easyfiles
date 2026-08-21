@@ -47,3 +47,7 @@ next-env.d.ts
 
 # claude code local settings
 .claude/
+
+# agent skills — per-machine tool installs, re-added with `npx skills add`
+.agents/
+skills-lock.json
