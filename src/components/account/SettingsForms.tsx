@@ -86,8 +86,9 @@ export function PasswordForm() {
 }
 
 export function HistoryControls({ runCount }: { runCount: number }) {
-  const [state, submit] = useActionState(
-    async (_prev: SettingsState) => clearHistoryAction(),
+  // No form fields to read, so the action ignores both arguments.
+  const [state, submit] = useActionState<SettingsState, FormData>(
+    () => clearHistoryAction(),
     EMPTY,
   );
   const [confirming, setConfirming] = useState(false);

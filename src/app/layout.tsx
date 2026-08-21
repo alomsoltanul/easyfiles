@@ -3,6 +3,8 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import AppHeader from "@/components/AppHeader";
 import GlobalFooter from "@/components/GlobalFooter";
+import { FREE_TOOL_COUNT, TOOL_COUNT } from "@/lib/tools";
+import { getSiteUrl } from "@/lib/site";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -15,8 +17,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ConvertTools — 56 Free Image, PDF, JSON & Video Tools",
-  description: "Convert HEIC, JPEG, PNG and WebP. Merge, split, sign and compress PDFs. Format and convert JSON. Download video. 56 tools that run in your browser — no uploads, no account.",
+  metadataBase: new URL(getSiteUrl()),
+  title: `ConvertTools — ${FREE_TOOL_COUNT} Free Image, PDF, JSON & Video Tools`,
+  description: `Convert HEIC, JPEG, PNG and WebP. Merge, split, sign and compress PDFs. Format and convert JSON. Download video. ${FREE_TOOL_COUNT} tools run free in your browser with no account — ${TOOL_COUNT} in total.`,
   keywords: ["image converter", "heic to jpg", "png to webp", "pdf merger", "pdf compressor", "pdf to word", "json formatter", "ocr scanner", "video downloader", "image compressor"],
 };
 

@@ -406,7 +406,7 @@ export default function AppHeader() {
           </div>
           <div className="hidden sm:block leading-tight">
             <span className="block text-[17px] font-bold tracking-tight text-slate-900">ConvertTools</span>
-            <span className="block text-[11px] font-medium text-slate-400">{TOOL_COUNT} free browser tools</span>
+            <span className="block text-[11px] font-medium text-slate-400">{TOOL_COUNT} browser tools</span>
           </div>
         </Link>
 

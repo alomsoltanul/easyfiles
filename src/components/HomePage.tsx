@@ -6,6 +6,7 @@ import {
   DEPARTMENTS,
   DEPARTMENT_LIST,
   ICONS,
+  FREE_TOOL_COUNT,
   POPULAR_TOOLS,
   TOOLS,
   TOOL_COUNT,
@@ -473,7 +474,8 @@ export default function HomePage() {
           <div className="relative">
             <h2 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">Start with the tool you came for</h2>
             <p className="mx-auto mt-3 max-w-xl text-sm leading-relaxed text-slate-400">
-              No signup, no upload, no limit. {TOOL_COUNT} tools waiting in this tab.
+              No signup and no upload for {FREE_TOOL_COUNT} of them. {TOOL_COUNT} tools waiting in
+              this tab.
             </p>
             <div className="mt-7 flex flex-wrap justify-center gap-3">
               <button
