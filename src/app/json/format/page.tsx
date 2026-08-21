@@ -1,5 +1,6 @@
 import JsonFormatter from '@/components/JsonFormatter';
 import ToolLayout from '@/components/ToolLayout';
+import ToolGate from '@/components/ToolGate';
 import InfoCards, { PrivacyIcon, SpeedIcon } from '@/components/InfoCards';
 
 export default function JsonFormatPage() {
@@ -15,7 +16,9 @@ export default function JsonFormatPage() {
         ]} />
       }
     >
-      <JsonFormatter />
+      <ToolGate slug="/json/format">
+        <JsonFormatter />
+      </ToolGate>
     </ToolLayout>
   );
 }

@@ -1,5 +1,6 @@
 import JsonSort from '@/components/JsonSort';
 import ToolLayout from '@/components/ToolLayout';
+import ToolGate from '@/components/ToolGate';
 import InfoCards, { PrivacyIcon, SpeedIcon } from '@/components/InfoCards';
 
 export default function JsonSortPage() {
@@ -15,7 +16,9 @@ export default function JsonSortPage() {
         ]} />
       }
     >
-      <JsonSort />
+      <ToolGate slug="/json/sort">
+        <JsonSort />
+      </ToolGate>
     </ToolLayout>
   );
 }

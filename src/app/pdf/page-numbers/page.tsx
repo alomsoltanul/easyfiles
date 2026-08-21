@@ -1,5 +1,6 @@
 import PdfPageNumbers from '@/components/PdfPageNumbers';
 import ToolLayout from '@/components/ToolLayout';
+import ToolGate from '@/components/ToolGate';
 import InfoCards, { PrivacyIcon, SpeedIcon, BulkIcon } from '@/components/InfoCards';
 
 export const metadata = {
@@ -22,7 +23,9 @@ export default function PdfPageNumbersPage() {
         ]} />
       }
     >
-      <PdfPageNumbers />
+      <ToolGate slug="/pdf/page-numbers">
+        <PdfPageNumbers />
+      </ToolGate>
     </ToolLayout>
   );
 }

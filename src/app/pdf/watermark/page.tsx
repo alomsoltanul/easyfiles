@@ -1,5 +1,6 @@
 import PdfWatermark from '@/components/PdfWatermark';
 import ToolLayout from '@/components/ToolLayout';
+import ToolGate from '@/components/ToolGate';
 import InfoCards, { PrivacyIcon, SpeedIcon } from '@/components/InfoCards';
 
 export const dynamic = 'force-dynamic';
@@ -17,7 +18,9 @@ export default function PdfWatermarkPage() {
         ]} />
       }
     >
-      <PdfWatermark />
+      <ToolGate slug="/pdf/watermark">
+        <PdfWatermark />
+      </ToolGate>
     </ToolLayout>
   );
 }

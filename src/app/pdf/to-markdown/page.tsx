@@ -1,5 +1,6 @@
 import PdfToMarkdown from '@/components/PdfToMarkdown';
 import ToolLayout from '@/components/ToolLayout';
+import ToolGate from '@/components/ToolGate';
 import InfoCards, { PrivacyIcon, SpeedIcon, BulkIcon } from '@/components/InfoCards';
 
 export const metadata = {
@@ -22,7 +23,9 @@ export default function PdfToMarkdownPage() {
         ]} />
       }
     >
-      <PdfToMarkdown />
+      <ToolGate slug="/pdf/to-markdown">
+        <PdfToMarkdown />
+      </ToolGate>
     </ToolLayout>
   );
 }

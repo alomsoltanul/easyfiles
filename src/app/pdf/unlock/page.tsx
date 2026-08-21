@@ -1,5 +1,6 @@
 import PdfUnlock from '@/components/PdfUnlock';
 import ToolLayout from '@/components/ToolLayout';
+import ToolGate from '@/components/ToolGate';
 import InfoCards, { PrivacyIcon, SpeedIcon } from '@/components/InfoCards';
 
 export const dynamic = 'force-dynamic';
@@ -17,7 +18,9 @@ export default function PdfUnlockPage() {
         ]} />
       }
     >
-      <PdfUnlock />
+      <ToolGate slug="/pdf/unlock">
+        <PdfUnlock />
+      </ToolGate>
     </ToolLayout>
   );
 }

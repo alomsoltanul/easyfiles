@@ -1,5 +1,6 @@
 import ImageCompressor from '@/components/ImageCompressor';
 import ToolLayout from '@/components/ToolLayout';
+import ToolGate from '@/components/ToolGate';
 import InfoCards, { PrivacyIcon, SpeedIcon, BulkIcon } from '@/components/InfoCards';
 
 export default function ImageCompressPage() {
@@ -15,7 +16,9 @@ export default function ImageCompressPage() {
         ]} />
       }
     >
-      <ImageCompressor />
+      <ToolGate slug="/image/compress">
+        <ImageCompressor />
+      </ToolGate>
     </ToolLayout>
   );
 }

@@ -1,5 +1,6 @@
 import JsonValidator from '@/components/JsonValidator';
 import ToolLayout from '@/components/ToolLayout';
+import ToolGate from '@/components/ToolGate';
 import InfoCards, { PrivacyIcon, SpeedIcon } from '@/components/InfoCards';
 
 export default function JsonValidatePage() {
@@ -15,7 +16,9 @@ export default function JsonValidatePage() {
         ]} />
       }
     >
-      <JsonValidator />
+      <ToolGate slug="/json/validate">
+        <JsonValidator />
+      </ToolGate>
     </ToolLayout>
   );
 }

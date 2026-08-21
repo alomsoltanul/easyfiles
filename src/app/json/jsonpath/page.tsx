@@ -1,5 +1,6 @@
 import JsonPath from '@/components/JsonPath';
 import ToolLayout from '@/components/ToolLayout';
+import ToolGate from '@/components/ToolGate';
 import InfoCards, { PrivacyIcon, SpeedIcon } from '@/components/InfoCards';
 
 export default function JsonPathPage() {
@@ -15,7 +16,9 @@ export default function JsonPathPage() {
         ]} />
       }
     >
-      <JsonPath />
+      <ToolGate slug="/json/jsonpath">
+        <JsonPath />
+      </ToolGate>
     </ToolLayout>
   );
 }

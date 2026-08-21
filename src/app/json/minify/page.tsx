@@ -1,5 +1,6 @@
 import JsonMinifier from '@/components/JsonMinifier';
 import ToolLayout from '@/components/ToolLayout';
+import ToolGate from '@/components/ToolGate';
 import InfoCards, { PrivacyIcon, SpeedIcon } from '@/components/InfoCards';
 
 export default function JsonMinifyPage() {
@@ -15,7 +16,9 @@ export default function JsonMinifyPage() {
         ]} />
       }
     >
-      <JsonMinifier />
+      <ToolGate slug="/json/minify">
+        <JsonMinifier />
+      </ToolGate>
     </ToolLayout>
   );
 }

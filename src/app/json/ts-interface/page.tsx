@@ -1,5 +1,6 @@
 import JsonTsInterface from '@/components/JsonTsInterface';
 import ToolLayout from '@/components/ToolLayout';
+import ToolGate from '@/components/ToolGate';
 import InfoCards, { PrivacyIcon, SpeedIcon } from '@/components/InfoCards';
 
 export default function JsonTsInterfacePage() {
@@ -15,7 +16,9 @@ export default function JsonTsInterfacePage() {
         ]} />
       }
     >
-      <JsonTsInterface />
+      <ToolGate slug="/json/ts-interface">
+        <JsonTsInterface />
+      </ToolGate>
     </ToolLayout>
   );
 }

@@ -1,5 +1,6 @@
 import PdfMerger from '@/components/PdfMerger';
 import ToolLayout from '@/components/ToolLayout';
+import ToolGate from '@/components/ToolGate';
 import InfoCards, { PrivacyIcon, SpeedIcon, BulkIcon } from '@/components/InfoCards';
 
 export default function PdfMergePage() {
@@ -15,7 +16,9 @@ export default function PdfMergePage() {
         ]} />
       }
     >
-      <PdfMerger />
+      <ToolGate slug="/pdf/merge">
+        <PdfMerger />
+      </ToolGate>
     </ToolLayout>
   );
 }

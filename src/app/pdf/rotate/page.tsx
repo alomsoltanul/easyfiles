@@ -1,5 +1,6 @@
 import PdfRotate from '@/components/PdfRotate';
 import ToolLayout from '@/components/ToolLayout';
+import ToolGate from '@/components/ToolGate';
 import InfoCards, { PrivacyIcon, SpeedIcon } from '@/components/InfoCards';
 
 export const dynamic = 'force-dynamic';
@@ -17,7 +18,9 @@ export default function PdfRotatePage() {
         ]} />
       }
     >
-      <PdfRotate />
+      <ToolGate slug="/pdf/rotate">
+        <PdfRotate />
+      </ToolGate>
     </ToolLayout>
   );
 }

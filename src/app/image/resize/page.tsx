@@ -1,5 +1,6 @@
 import ImageResizer from '@/components/ImageResizer';
 import ToolLayout from '@/components/ToolLayout';
+import ToolGate from '@/components/ToolGate';
 import InfoCards, { PrivacyIcon, SpeedIcon } from '@/components/InfoCards';
 
 export default function ImageResizePage() {
@@ -15,7 +16,9 @@ export default function ImageResizePage() {
         ]} />
       }
     >
-      <ImageResizer />
+      <ToolGate slug="/image/resize">
+        <ImageResizer />
+      </ToolGate>
     </ToolLayout>
   );
 }

@@ -1,5 +1,6 @@
 import PdfDeletePages from '@/components/PdfDeletePages';
 import ToolLayout from '@/components/ToolLayout';
+import ToolGate from '@/components/ToolGate';
 import InfoCards, { PrivacyIcon, SpeedIcon } from '@/components/InfoCards';
 
 export const dynamic = 'force-dynamic';
@@ -17,7 +18,9 @@ export default function PdfDeletePagesPage() {
         ]} />
       }
     >
-      <PdfDeletePages />
+      <ToolGate slug="/pdf/delete-pages">
+        <PdfDeletePages />
+      </ToolGate>
     </ToolLayout>
   );
 }
