@@ -5,6 +5,7 @@ import { OutputFormat, ConversionResult, convertBulkToFormat } from '@/lib/conve
 import UploadZone from './UploadZone';
 import ConversionResults from './ConversionResults';
 import FormatSelector, { getOutputExtension } from './FormatSelector';
+import { logImageFailure, logImageRun } from '@/lib/usage-image';
 
 interface HeicConverterProps {
   defaultOutput: OutputFormat;
@@ -52,6 +53,7 @@ export default function HeicConverter({ defaultOutput, title, description }: Hei
     setIsConverting(true);
     setError(null);
     setProgress(0);
+    const startedAt = Date.now();
 
     try {
       const converted = await convertBulkToFormat(
@@ -66,8 +68,10 @@ export default function HeicConverter({ defaultOutput, title, description }: Hei
       }
 
       setResults(converted);
+      logImageRun(converted, startedAt);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Conversion failed. Please try again.');
+      logImageFailure(files.length, startedAt, err instanceof Error ? err.message : 'unknown');
     } finally {
       setIsConverting(false);
     }

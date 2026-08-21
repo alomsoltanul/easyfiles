@@ -1,5 +1,6 @@
 import DocConverter from '@/components/DocConverter';
 import ToolLayout from '@/components/ToolLayout';
+import ToolGate from '@/components/ToolGate';
 import InfoCards, { PrivacyIcon, SpeedIcon } from '@/components/InfoCards';
 
 export default function PdfToWordPage() {
@@ -15,17 +16,19 @@ export default function PdfToWordPage() {
         ]} />
       }
     >
-      <DocConverter
-        toolType="pdf-to-word"
-        accept=".pdf,application/pdf"
-        acceptLabel="PDF files supported"
-        uploadTitle="Drop your PDF here"
-        uploadSubtitle="or click to browse — .pdf"
-        actionLabel="Convert to Word"
-        successTitle="PDF converted to Word!"
-        filterExt=".pdf"
-        showPdfPreview
-      />
+      <ToolGate slug="/pdf/to-word">
+        <DocConverter
+          toolType="pdf-to-word"
+          accept=".pdf,application/pdf"
+          acceptLabel="PDF files supported"
+          uploadTitle="Drop your PDF here"
+          uploadSubtitle="or click to browse — .pdf"
+          actionLabel="Convert to Word"
+          successTitle="PDF converted to Word!"
+          filterExt=".pdf"
+          showPdfPreview
+        />
+      </ToolGate>
     </ToolLayout>
   );
 }

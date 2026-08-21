@@ -1,5 +1,6 @@
 import DocConverter from '@/components/DocConverter';
 import ToolLayout from '@/components/ToolLayout';
+import ToolGate from '@/components/ToolGate';
 import InfoCards, { PrivacyIcon, SpeedIcon } from '@/components/InfoCards';
 
 export default function WordToPdfPage() {
@@ -15,16 +16,18 @@ export default function WordToPdfPage() {
         ]} />
       }
     >
-      <DocConverter
-        toolType="word-to-pdf"
-        accept=".doc,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        acceptLabel="DOCX files supported"
-        uploadTitle="Drop your Word document here"
-        uploadSubtitle="or click to browse — .doc / .docx"
-        actionLabel="Convert to PDF"
-        successTitle="Word converted to PDF!"
-        filterExt=".doc,.docx"
-      />
+      <ToolGate slug="/pdf/from-word">
+        <DocConverter
+          toolType="word-to-pdf"
+          accept=".doc,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+          acceptLabel="DOCX files supported"
+          uploadTitle="Drop your Word document here"
+          uploadSubtitle="or click to browse — .doc / .docx"
+          actionLabel="Convert to PDF"
+          successTitle="Word converted to PDF!"
+          filterExt=".doc,.docx"
+        />
+      </ToolGate>
     </ToolLayout>
   );
 }

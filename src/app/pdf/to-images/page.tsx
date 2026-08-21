@@ -1,5 +1,6 @@
 import PdfToImages from '@/components/PdfToImages';
 import ToolLayout from '@/components/ToolLayout';
+import ToolGate from '@/components/ToolGate';
 import InfoCards, { PrivacyIcon, SpeedIcon } from '@/components/InfoCards';
 
 export const dynamic = 'force-dynamic';
@@ -17,7 +18,9 @@ export default function PdfToImagesPage() {
         ]} />
       }
     >
-      <PdfToImages />
+      <ToolGate slug="/pdf/to-images">
+        <PdfToImages />
+      </ToolGate>
     </ToolLayout>
   );
 }

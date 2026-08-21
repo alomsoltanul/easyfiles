@@ -1,5 +1,6 @@
 import PdfCrop from '@/components/PdfCrop';
 import ToolLayout from '@/components/ToolLayout';
+import ToolGate from '@/components/ToolGate';
 import InfoCards, { PrivacyIcon, SpeedIcon, BulkIcon } from '@/components/InfoCards';
 
 export const metadata = {
@@ -22,7 +23,9 @@ export default function PdfCropPage() {
         ]} />
       }
     >
-      <PdfCrop />
+      <ToolGate slug="/pdf/crop">
+        <PdfCrop />
+      </ToolGate>
     </ToolLayout>
   );
 }

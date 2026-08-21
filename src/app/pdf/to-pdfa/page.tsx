@@ -1,5 +1,6 @@
 import PdfToPdfA from '@/components/PdfToPdfA';
 import ToolLayout from '@/components/ToolLayout';
+import ToolGate from '@/components/ToolGate';
 import InfoCards, { PrivacyIcon, SpeedIcon, BulkIcon } from '@/components/InfoCards';
 
 export const metadata = {
@@ -22,7 +23,9 @@ export default function PdfToPdfAPage() {
         ]} />
       }
     >
-      <PdfToPdfA />
+      <ToolGate slug="/pdf/to-pdfa">
+        <PdfToPdfA />
+      </ToolGate>
     </ToolLayout>
   );
 }

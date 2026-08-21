@@ -1,5 +1,6 @@
 import JsonYaml from '@/components/JsonYaml';
 import ToolLayout from '@/components/ToolLayout';
+import ToolGate from '@/components/ToolGate';
 import InfoCards, { PrivacyIcon, SpeedIcon } from '@/components/InfoCards';
 
 export default function JsonYamlPage() {
@@ -15,7 +16,9 @@ export default function JsonYamlPage() {
         ]} />
       }
     >
-      <JsonYaml />
+      <ToolGate slug="/json/yaml">
+        <JsonYaml />
+      </ToolGate>
     </ToolLayout>
   );
 }

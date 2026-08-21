@@ -4,6 +4,7 @@ import React, { useState, useCallback } from 'react';
 import { ConversionResult, convertBulkToFormat, OutputFormat } from '@/lib/converters';
 import UploadZone from './UploadZone';
 import ConversionResults from './ConversionResults';
+import { logImageFailure, logImageRun } from '@/lib/usage-image';
 
 export default function ImageCompressor() {
   const [files, setFiles] = useState<File[]>([]);
@@ -31,6 +32,7 @@ export default function ImageCompressor() {
     setIsConverting(true);
     setError(null);
     setProgress(0);
+    const startedAt = Date.now();
 
     try {
       const targetFormat: OutputFormat = 'image/webp';
@@ -43,8 +45,10 @@ export default function ImageCompressor() {
 
       if (converted.length === 0) throw new Error('No files were successfully compressed.');
       setResults(converted);
+      logImageRun(converted, startedAt);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Compression failed.');
+      logImageFailure(files.length, startedAt, err instanceof Error ? err.message : 'unknown');
     } finally {
       setIsConverting(false);
     }

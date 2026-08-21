@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import type { ToolOutput, ProgressFn } from '@/lib/pdf-tools';
+import { currentSlug, logRun, totalBytes } from '@/lib/usage';
 
 export interface UsePdfToolOptions {
   toolType: string;
@@ -146,6 +147,8 @@ export function usePdfTool({ toolType, options = {} }: UsePdfToolOptions) {
     setOutputs([]);
     setError(null);
 
+    const startedAt = Date.now();
+
     try {
       const merged = overrides ? { ...options, ...overrides } : options;
       const output = await runTool(toolType, files, merged, (p) => setProgress(Math.min(100, p)));
@@ -173,8 +176,25 @@ export function usePdfTool({ toolType, options = {} }: UsePdfToolOptions) {
       if (items.length !== 1) urlsRef.current.push(finalUrl);
       setProgress(100);
       setResult({ url: finalUrl, name: final.name, size: final.blob.size });
+
+      logRun({
+        slug: currentSlug(),
+        fileCount: files.length,
+        inputBytes: totalBytes(files),
+        outputBytes: final.blob.size,
+        durationMs: Date.now() - startedAt,
+        status: 'success',
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Processing failed');
+      logRun({
+        slug: currentSlug(),
+        fileCount: files.length,
+        inputBytes: totalBytes(files),
+        durationMs: Date.now() - startedAt,
+        status: 'error',
+        errorCode: err instanceof Error ? err.message.slice(0, 64) : 'unknown',
+      });
     } finally {
       setIsProcessing(false);
     }

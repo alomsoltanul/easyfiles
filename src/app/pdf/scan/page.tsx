@@ -1,5 +1,6 @@
 import PdfScanner from '@/components/PdfScanner';
 import ToolLayout from '@/components/ToolLayout';
+import ToolGate from '@/components/ToolGate';
 import InfoCards, { PrivacyIcon, SpeedIcon } from '@/components/InfoCards';
 
 export default function PdfScanPage() {
@@ -15,7 +16,9 @@ export default function PdfScanPage() {
         ]} />
       }
     >
-      <PdfScanner />
+      <ToolGate slug="/pdf/scan">
+        <PdfScanner />
+      </ToolGate>
     </ToolLayout>
   );
 }

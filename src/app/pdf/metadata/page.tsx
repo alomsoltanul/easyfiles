@@ -1,5 +1,6 @@
 import PdfMetadata from '@/components/PdfMetadata';
 import ToolLayout from '@/components/ToolLayout';
+import ToolGate from '@/components/ToolGate';
 import InfoCards, { PrivacyIcon, SpeedIcon } from '@/components/InfoCards';
 
 export const dynamic = 'force-dynamic';
@@ -17,7 +18,9 @@ export default function PdfMetadataPage() {
         ]} />
       }
     >
-      <PdfMetadata />
+      <ToolGate slug="/pdf/metadata">
+        <PdfMetadata />
+      </ToolGate>
     </ToolLayout>
   );
 }

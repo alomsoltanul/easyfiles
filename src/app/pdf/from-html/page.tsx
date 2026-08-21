@@ -1,5 +1,6 @@
 import HtmlToPdf from '@/components/HtmlToPdf';
 import ToolLayout from '@/components/ToolLayout';
+import ToolGate from '@/components/ToolGate';
 import InfoCards, { PrivacyIcon, SpeedIcon, BulkIcon } from '@/components/InfoCards';
 
 export const metadata = {
@@ -22,7 +23,9 @@ export default function HtmlToPdfPage() {
         ]} />
       }
     >
-      <HtmlToPdf />
+      <ToolGate slug="/pdf/from-html">
+        <HtmlToPdf />
+      </ToolGate>
     </ToolLayout>
   );
 }

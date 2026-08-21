@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { DEPARTMENT_LIST, ICONS, TOOL_COUNT, deptCount, toolsByDept } from '@/lib/tools';
+import { DEPARTMENT_LIST, FREE_TOOL_COUNT, ICONS, TOOL_COUNT, deptCount, toolsByDept } from '@/lib/tools';
 
 export default function GlobalFooter() {
   const year = new Date().getFullYear();
@@ -19,10 +19,11 @@ export default function GlobalFooter() {
               <span className="text-[17px] font-bold tracking-tight text-slate-900">ConvertTools</span>
             </Link>
             <p className="mt-4 text-sm leading-relaxed text-slate-500">
-              {TOOL_COUNT} file tools that run inside your browser. No uploads, no accounts, no limits.
+              {TOOL_COUNT} file tools that run inside your browser. {FREE_TOOL_COUNT} of them are
+              free with no account, and nothing you convert is ever uploaded.
             </p>
             <div className="mt-5 flex flex-wrap gap-2">
-              {['No uploads', 'Free forever'].map((chip) => (
+              {['No uploads', `${FREE_TOOL_COUNT} free tools`].map((chip) => (
                 <span key={chip} className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600">
                   {chip}
                 </span>

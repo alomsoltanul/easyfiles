@@ -1,5 +1,6 @@
 import PdfCompressor from '@/components/PdfCompressor';
 import ToolLayout from '@/components/ToolLayout';
+import ToolGate from '@/components/ToolGate';
 import InfoCards, { PrivacyIcon, SpeedIcon } from '@/components/InfoCards';
 
 export default function PdfCompressPage() {
@@ -15,7 +16,9 @@ export default function PdfCompressPage() {
         ]} />
       }
     >
-      <PdfCompressor />
+      <ToolGate slug="/pdf/compress">
+        <PdfCompressor />
+      </ToolGate>
     </ToolLayout>
   );
 }

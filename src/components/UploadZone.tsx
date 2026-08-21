@@ -2,6 +2,8 @@
 
 import React, { useRef, useCallback } from 'react';
 import { validateImageFile } from '@/lib/converters';
+import { useFileLimits } from '@/hooks/useFileLimits';
+import LimitNotice from './LimitNotice';
 
 interface UploadZoneProps {
   format?: string;
@@ -27,6 +29,14 @@ export default function UploadZone({
 }: UploadZoneProps) {
   const dragDropRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { entitlements, admit, blocked, clearBlock } = useFileLimits();
+
+  /** Plan limits gate every path in, drag-drop and picker alike. */
+  const emit = useCallback((files: File[]) => {
+    if (files.length === 0) return;
+    const allowed = admit(files);
+    if (allowed) onFilesSelected(allowed);
+  }, [admit, onFilesSelected]);
 
   const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -48,25 +58,26 @@ export default function UploadZone({
     const files = Array.from(e.dataTransfer.files).filter((file) =>
       acceptAllImages ? validateImageFile(file) : true
     );
-    if (files.length > 0) {
-      onFilesSelected(files);
-    }
-  }, [acceptAllImages, onFilesSelected]);
+    emit(files);
+  }, [acceptAllImages, emit]);
 
   const handleFileInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       const files = Array.from(e.target.files).filter((file) =>
         acceptAllImages ? validateImageFile(file) : true
       );
-      if (files.length > 0) {
-        onFilesSelected(files);
-      }
+      emit(files);
     }
-  }, [acceptAllImages, onFilesSelected]);
+  }, [acceptAllImages, emit]);
 
   const acceptedTypes = accept || (acceptAllImages ? '.heic,.heif,.jpg,.jpeg,.png,.webp,image/heic,image/heif,image/jpeg,image/jpg,image/png,image/webp' : '');
 
   return (
+    <div className="space-y-4">
+      {blocked && (
+        <LimitNotice block={blocked} signedIn={entitlements.signedIn} onDismiss={clearBlock} />
+      )}
+
     <div
       ref={dragDropRef}
       onDragOver={handleDragOver}
@@ -110,6 +121,7 @@ export default function UploadZone({
           </div>
         </div>
       </div>
+    </div>
     </div>
   );
 }

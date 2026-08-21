@@ -1,5 +1,6 @@
 import ImagesToPdf from '@/components/ImagesToPdf';
 import ToolLayout from '@/components/ToolLayout';
+import ToolGate from '@/components/ToolGate';
 import InfoCards, { PrivacyIcon, SpeedIcon, BulkIcon } from '@/components/InfoCards';
 
 export default function ImagesToPdfPage() {
@@ -15,7 +16,9 @@ export default function ImagesToPdfPage() {
         ]} />
       }
     >
-      <ImagesToPdf />
+      <ToolGate slug="/pdf/from-images">
+        <ImagesToPdf />
+      </ToolGate>
     </ToolLayout>
   );
 }

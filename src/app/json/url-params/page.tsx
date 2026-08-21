@@ -1,5 +1,6 @@
 import JsonUrlParams from '@/components/JsonUrlParams';
 import ToolLayout from '@/components/ToolLayout';
+import ToolGate from '@/components/ToolGate';
 import InfoCards, { PrivacyIcon, SpeedIcon } from '@/components/InfoCards';
 
 export default function JsonUrlParamsPage() {
@@ -15,7 +16,9 @@ export default function JsonUrlParamsPage() {
         ]} />
       }
     >
-      <JsonUrlParams />
+      <ToolGate slug="/json/url-params">
+        <JsonUrlParams />
+      </ToolGate>
     </ToolLayout>
   );
 }

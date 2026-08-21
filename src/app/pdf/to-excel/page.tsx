@@ -1,5 +1,6 @@
 import DocConverter from '@/components/DocConverter';
 import ToolLayout from '@/components/ToolLayout';
+import ToolGate from '@/components/ToolGate';
 import InfoCards, { PrivacyIcon, SpeedIcon } from '@/components/InfoCards';
 
 export default function PdfToExcelPage() {
@@ -15,17 +16,19 @@ export default function PdfToExcelPage() {
         ]} />
       }
     >
-      <DocConverter
-        toolType="pdf-to-excel"
-        accept=".pdf,application/pdf"
-        acceptLabel="PDF files supported"
-        uploadTitle="Drop your PDF here"
-        uploadSubtitle="or click to browse — .pdf"
-        actionLabel="Convert to Excel"
-        successTitle="PDF converted to Excel!"
-        filterExt=".pdf"
-        showPdfPreview
-      />
+      <ToolGate slug="/pdf/to-excel">
+        <DocConverter
+          toolType="pdf-to-excel"
+          accept=".pdf,application/pdf"
+          acceptLabel="PDF files supported"
+          uploadTitle="Drop your PDF here"
+          uploadSubtitle="or click to browse — .pdf"
+          actionLabel="Convert to Excel"
+          successTitle="PDF converted to Excel!"
+          filterExt=".pdf"
+          showPdfPreview
+        />
+      </ToolGate>
     </ToolLayout>
   );
 }

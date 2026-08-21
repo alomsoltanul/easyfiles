@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import VideoDownloader from '@/components/VideoDownloader';
+import ToolGate from '@/components/ToolGate';
 import { PLATFORM_THEMES, PLATFORM_PAGES, type PlatformKey } from '@/components/videoPlatforms';
 
 /** URL slug → platform key. Both /x and /twitter resolve to the same tool. */
@@ -49,7 +50,11 @@ export default async function PlatformDownloaderPage({ params }: Props) {
 
   return (
     <>
-      <VideoDownloader platform={key} />
+      {/* The registry lists these by their canonical slug, so /yt gates as
+          /video-tools/youtube rather than as a tool nobody has heard of. */}
+      <ToolGate slug={`/video-tools/${PLATFORM_THEMES[key].slug}`}>
+        <VideoDownloader platform={key} />
+      </ToolGate>
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 pb-12">
         <h2 className="text-sm font-bold text-slate-800 mb-3">Other video downloaders</h2>

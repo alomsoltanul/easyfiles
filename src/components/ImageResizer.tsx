@@ -4,6 +4,7 @@ import React, { useState, useCallback } from 'react';
 import { downloadImage, formatFileSize } from '@/lib/converters';
 import UploadZone from './UploadZone';
 import SizeComparison from './SizeComparison';
+import { logImageFailure, logImageRun } from '@/lib/usage-image';
 
 type ResizePreset = { width: number; height: number; label: string };
 
@@ -67,6 +68,7 @@ export default function ImageResizer() {
     if (!file) return;
     setIsConverting(true);
     setError(null);
+    const startedAt = Date.now();
 
     try {
       const canvas = document.createElement('canvas');
@@ -95,8 +97,10 @@ export default function ImageResizer() {
 
       const baseName = file.name.replace(/\.[^/.]+$/, '');
       setResult({ blob, fileName: `${baseName}-resized.${mimeExt}`, originalSize: file.size });
+      logImageRun([{ originalSize: file.size, convertedSize: blob.size }], startedAt);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Resize failed.');
+      logImageFailure(1, startedAt, err instanceof Error ? err.message : 'unknown');
     } finally {
       setIsConverting(false);
     }

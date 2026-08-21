@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import { formatFileSize } from '@/lib/converters';
+import { currentSlug, logRun } from '@/lib/usage';
 
 interface CodeOutputProps {
   value: string;
@@ -23,13 +24,32 @@ export default function CodeOutput({
   downloadFileName = 'output.json',
 }: CodeOutputProps) {
   const [copied, setCopied] = useState(false);
+  const loggedValue = useRef<string | null>(null);
+
+  /*
+   * The JSON tools recompute on every keystroke, so a run is only worth
+   * recording once the user takes the output away — copy or download. Guarding
+   * on the value keeps a second copy of the same result from double-counting.
+   */
+  const recordRun = useCallback(() => {
+    if (!value || loggedValue.current === value) return;
+    loggedValue.current = value;
+    logRun({
+      slug: currentSlug(),
+      fileCount: 1,
+      inputBytes: value.length,
+      outputBytes: value.length,
+      status: 'success',
+    });
+  }, [value]);
 
   const handleCopy = useCallback(() => {
     navigator.clipboard.writeText(value);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+    recordRun();
     onCopy?.();
-  }, [value, onCopy]);
+  }, [value, onCopy, recordRun]);
 
   const handleDownload = useCallback(() => {
     const blob = new Blob([value], { type: 'application/json' });
@@ -39,7 +59,8 @@ export default function CodeOutput({
     a.download = downloadFileName;
     a.click();
     URL.revokeObjectURL(url);
-  }, [value, downloadFileName]);
+    recordRun();
+  }, [value, downloadFileName, recordRun]);
 
   const lineCount = value.split('\n').length;
   const lineNumbers = Array.from({ length: Math.max(lineCount, 1) }, (_, i) => i + 1);

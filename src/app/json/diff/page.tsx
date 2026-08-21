@@ -1,5 +1,6 @@
 import JsonDiff from '@/components/JsonDiff';
 import ToolLayout from '@/components/ToolLayout';
+import ToolGate from '@/components/ToolGate';
 import InfoCards, { PrivacyIcon, SpeedIcon } from '@/components/InfoCards';
 
 export default function JsonDiffPage() {
@@ -15,7 +16,9 @@ export default function JsonDiffPage() {
         ]} />
       }
     >
-      <JsonDiff />
+      <ToolGate slug="/json/diff">
+        <JsonDiff />
+      </ToolGate>
     </ToolLayout>
   );
 }

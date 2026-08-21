@@ -1,5 +1,6 @@
 import WebpConverter from '@/components/WebpConverter';
 import ToolLayout from '@/components/ToolLayout';
+import ToolGate from '@/components/ToolGate';
 import InfoCards, { PrivacyIcon, SpeedIcon, BulkIcon } from '@/components/InfoCards';
 
 export const metadata = {
@@ -21,7 +22,9 @@ export default function PngToWebpPage() {
         ]} />
       }
     >
-      <WebpConverter source="png" />
+      <ToolGate slug="/image/png-to-webp">
+        <WebpConverter source="png" />
+      </ToolGate>
     </ToolLayout>
   );
 }

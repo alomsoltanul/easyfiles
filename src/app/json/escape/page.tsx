@@ -1,5 +1,6 @@
 import JsonEscape from '@/components/JsonEscape';
 import ToolLayout from '@/components/ToolLayout';
+import ToolGate from '@/components/ToolGate';
 import InfoCards, { PrivacyIcon, SpeedIcon } from '@/components/InfoCards';
 
 export default function JsonEscapePage() {
@@ -15,7 +16,9 @@ export default function JsonEscapePage() {
         ]} />
       }
     >
-      <JsonEscape />
+      <ToolGate slug="/json/escape">
+        <JsonEscape />
+      </ToolGate>
     </ToolLayout>
   );
 }

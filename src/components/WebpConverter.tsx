@@ -3,6 +3,7 @@
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { convertBulkToWebp, supportsWebpEncode, WebpBulkResult, WebpBulkFailure } from '@/lib/webp';
 import { formatFileSize, downloadImage } from '@/lib/converters';
+import { logImageFailure, logImageRun } from '@/lib/usage-image';
 
 type Source = 'png' | 'jpeg';
 
@@ -115,6 +116,7 @@ export default function WebpConverter({ source }: WebpConverterProps) {
     setIsConverting(true);
     setError(null);
     setProgress(0);
+    const startedAt = Date.now();
 
     try {
       const { results: converted, failures: failed } = await convertBulkToWebp(
@@ -133,8 +135,10 @@ export default function WebpConverter({ source }: WebpConverterProps) {
         throw new Error(failed[0]?.reason || 'No files could be converted.');
       }
       setResults(converted);
+      logImageRun(converted, startedAt);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Conversion failed. Please try again.');
+      logImageFailure(files.length, startedAt, err instanceof Error ? err.message : 'unknown');
     } finally {
       setIsConverting(false);
     }

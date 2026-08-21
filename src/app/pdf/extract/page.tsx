@@ -1,5 +1,6 @@
 import PdfExtract from '@/components/PdfExtract';
 import ToolLayout from '@/components/ToolLayout';
+import ToolGate from '@/components/ToolGate';
 import InfoCards, { PrivacyIcon, SpeedIcon } from '@/components/InfoCards';
 
 export const dynamic = 'force-dynamic';
@@ -17,7 +18,9 @@ export default function PdfExtractPage() {
         ]} />
       }
     >
-      <PdfExtract />
+      <ToolGate slug="/pdf/extract">
+        <PdfExtract />
+      </ToolGate>
     </ToolLayout>
   );
 }

@@ -1,5 +1,6 @@
 import PdfOCR from '@/components/PdfOCR';
 import ToolLayout from '@/components/ToolLayout';
+import ToolGate from '@/components/ToolGate';
 import InfoCards, { PrivacyIcon, SpeedIcon } from '@/components/InfoCards';
 
 export const dynamic = 'force-dynamic';
@@ -17,7 +18,9 @@ export default function PdfOCRPage() {
         ]} />
       }
     >
-      <PdfOCR />
+      <ToolGate slug="/pdf/ocr">
+        <PdfOCR />
+      </ToolGate>
     </ToolLayout>
   );
 }

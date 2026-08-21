@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import AccountMenu from './AccountMenu';
 import {
   DEPARTMENT_LIST,
   DEPARTMENTS,
@@ -76,6 +77,11 @@ function MegaPanel({ dept, onNavigate, pathname }: { dept: DeptId; onNavigate: (
                               {tool.badge === 'Popular' && (
                                 <span className="rounded-full bg-amber-100 px-1.5 py-px text-[9px] font-bold uppercase tracking-wide text-amber-700">
                                   Hot
+                                </span>
+                              )}
+                              {tool.access === 'pro' && (
+                                <span className="rounded-full bg-violet-100 px-1.5 py-px text-[9px] font-bold uppercase tracking-wide text-violet-700">
+                                  Pro
                                 </span>
                               )}
                             </span>
@@ -291,11 +297,16 @@ function MobileNav({ open, onClose, pathname }: { open: boolean; onClose: () => 
                                 <Link
                                   href={tool.href}
                                   onClick={onClose}
-                                  className={`block rounded-lg px-2 py-2 text-sm ${
+                                  className={`flex items-center gap-1.5 rounded-lg px-2 py-2 text-sm ${
                                     pathname === tool.href ? 'bg-slate-100 font-semibold text-slate-900' : 'text-slate-600'
                                   }`}
                                 >
                                   {tool.label}
+                                  {tool.access === 'pro' && (
+                                    <span className="rounded-full bg-violet-100 px-1.5 py-px text-[9px] font-bold uppercase tracking-wide text-violet-700">
+                                      Pro
+                                    </span>
+                                  )}
                                 </Link>
                               </li>
                             ))}
@@ -315,14 +326,7 @@ function MobileNav({ open, onClose, pathname }: { open: boolean; onClose: () => 
               );
             })}
 
-            <div className="mt-6 flex flex-col gap-2">
-              <Link href="/pricing" onClick={onClose} className="rounded-xl border border-slate-200 px-4 py-3 text-center text-sm font-semibold text-slate-700">
-                Plans
-              </Link>
-              <button type="button" className="rounded-xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-white">
-                Sign Up
-              </button>
-            </div>
+            <AccountMenu compact />
           </>
         )}
       </div>
@@ -402,7 +406,7 @@ export default function AppHeader() {
           </div>
           <div className="hidden sm:block leading-tight">
             <span className="block text-[17px] font-bold tracking-tight text-slate-900">ConvertTools</span>
-            <span className="block text-[11px] font-medium text-slate-400">{TOOL_COUNT} free browser tools</span>
+            <span className="block text-[11px] font-medium text-slate-400">{TOOL_COUNT} browser tools</span>
           </div>
         </Link>
 
@@ -459,23 +463,9 @@ export default function AppHeader() {
           >
             Plans
           </Link>
-          <button
-            type="button"
-            onMouseEnter={close}
-            className="hidden rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-900 xl:inline-flex"
-          >
-            Sign In
-          </button>
-          <button
-            type="button"
-            onMouseEnter={close}
-            className="hidden items-center gap-1.5 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-slate-800 sm:inline-flex"
-          >
-            Sign Up
-            <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2.2} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-            </svg>
-          </button>
+          <span onMouseEnter={close} className="flex items-center gap-2">
+            <AccountMenu />
+          </span>
 
           {/* Mobile toggle */}
           <button

@@ -1,5 +1,6 @@
 import DocConverter from '@/components/DocConverter';
 import ToolLayout from '@/components/ToolLayout';
+import ToolGate from '@/components/ToolGate';
 import InfoCards, { PrivacyIcon, SpeedIcon } from '@/components/InfoCards';
 
 export default function PdfToPowerPointPage() {
@@ -15,17 +16,19 @@ export default function PdfToPowerPointPage() {
         ]} />
       }
     >
-      <DocConverter
-        toolType="pdf-to-powerpoint"
-        accept=".pdf,application/pdf"
-        acceptLabel="PDF files supported"
-        uploadTitle="Drop your PDF here"
-        uploadSubtitle="or click to browse — .pdf"
-        actionLabel="Convert to PowerPoint"
-        successTitle="PDF converted to PowerPoint!"
-        filterExt=".pdf"
-        showPdfPreview
-      />
+      <ToolGate slug="/pdf/to-powerpoint">
+        <DocConverter
+          toolType="pdf-to-powerpoint"
+          accept=".pdf,application/pdf"
+          acceptLabel="PDF files supported"
+          uploadTitle="Drop your PDF here"
+          uploadSubtitle="or click to browse — .pdf"
+          actionLabel="Convert to PowerPoint"
+          successTitle="PDF converted to PowerPoint!"
+          filterExt=".pdf"
+          showPdfPreview
+        />
+      </ToolGate>
     </ToolLayout>
   );
 }

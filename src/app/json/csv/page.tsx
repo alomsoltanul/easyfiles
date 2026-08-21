@@ -1,5 +1,6 @@
 import JsonCsv from '@/components/JsonCsv';
 import ToolLayout from '@/components/ToolLayout';
+import ToolGate from '@/components/ToolGate';
 import InfoCards, { PrivacyIcon, SpeedIcon, BulkIcon } from '@/components/InfoCards';
 
 export default function JsonCsvPage() {
@@ -15,7 +16,9 @@ export default function JsonCsvPage() {
         ]} />
       }
     >
-      <JsonCsv />
+      <ToolGate slug="/json/csv">
+        <JsonCsv />
+      </ToolGate>
     </ToolLayout>
   );
 }
