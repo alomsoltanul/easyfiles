@@ -44,7 +44,11 @@ create policy profiles_update_self on public.profiles
   with check (id = auth.uid() or public.is_admin());
 
 -- A user may edit their own name and avatar. Privilege columns are off limits
--- unless the caller is an admin (or the service role, which skips RLS entirely).
+-- unless the caller is an admin.
+--
+-- NOTE: this version is superseded by 0005_fix_profile_guard.sql. The service
+-- role skips RLS policies but NOT triggers, so this body locked out the admin
+-- console's own writes. Kept as-is so the migration history stays truthful.
 create or replace function public.guard_profile_privileges()
 returns trigger
 language plpgsql

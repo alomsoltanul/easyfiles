@@ -51,3 +51,6 @@ next-env.d.ts
 # agent skills — per-machine tool installs, re-added with `npx skills add`
 .agents/
 skills-lock.json
+
+# supabase cli scratch
+supabase/.temp/
