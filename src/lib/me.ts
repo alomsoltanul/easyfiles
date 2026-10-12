@@ -14,7 +14,6 @@ export interface MeUser {
   email: string;
   fullName: string | null;
   avatarUrl: string | null;
-  isAdmin: boolean;
 }
 
 export interface MeSubscription {
@@ -32,9 +31,4 @@ export interface MeResponse {
   limits: PlanLimits;
   usageToday: UsageToday;
   subscription: MeSubscription | null;
-  /**
-   * The secret admin path, sent only to admins. ADMIN_PATH_SECRET is a
-   * server-only variable, so the browser has no other way to build this link.
-   */
-  adminPath: string | null;
 }

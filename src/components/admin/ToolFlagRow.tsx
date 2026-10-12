@@ -1,14 +1,17 @@
 'use client';
 
 import { useActionState } from 'react';
-import { setToolFlagAction, type AdminActionState } from '@/app/(admin)/console/actions';
+import {
+  setToolFlagAction,
+  type AdminActionState,
+} from '@/app/(admin)/admin-console/(dashboard)/actions';
 import type { ToolAccess } from '@/lib/tool-access';
 
 const EMPTY: AdminActionState = {};
 
 /**
  * One row of the tools screen. Each row is its own form so a change saves on
- * its own — a single form over 56 tools would make every save a mass update.
+ * its own — a single form over every tool would make every save a mass update.
  */
 export default function ToolFlagRow({
   slug,
@@ -38,7 +41,7 @@ export default function ToolFlagRow({
       <td className="px-3 py-2.5 text-xs text-slate-500">
         {defaultAccess === 'pro' ? 'Paid' : 'Free'}
         {access && access !== defaultAccess && (
-          <span className="ml-1.5 font-bold text-violet-600">overridden</span>
+          <span className="ml-1.5 font-bold text-indigo-600">overridden</span>
         )}
       </td>
       <td className="px-3 py-2.5">
@@ -48,7 +51,7 @@ export default function ToolFlagRow({
           <select
             name="access"
             defaultValue={effective}
-            className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[13px] focus:border-emerald-400 focus:outline-none"
+            className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[13px] focus:border-indigo-400 focus:outline-none"
           >
             <option value="free">Free</option>
             <option value="pro">Paid</option>
@@ -57,7 +60,7 @@ export default function ToolFlagRow({
           <select
             name="enabled"
             defaultValue={String(enabled)}
-            className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[13px] focus:border-emerald-400 focus:outline-none"
+            className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[13px] focus:border-indigo-400 focus:outline-none"
           >
             <option value="true">Live</option>
             <option value="false">Offline</option>

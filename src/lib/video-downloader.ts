@@ -156,10 +156,21 @@ export interface VideoFormat {
 export interface QualityOption {
   id: Quality;
   label: string;
+  /** Resolution in "p" — the short side of the frame, so vertical video reads correctly */
   height: number;
-  /** true when video and audio must be merged server-side with ffmpeg */
+  /** true when the file is produced server-side with ffmpeg (merge or re-encode) */
   needsMerge: boolean;
   approxSize?: number;
+  /**
+   * false when the file will be VP9/AV1/HEVC video. Those play in Chrome and
+   * VLC, but QuickTime, iPhones and the stock Windows player show a black
+   * picture with sound only — so they are never picked by default.
+   */
+  compatible: boolean;
+  /** Video codec label for display when not H.264 (e.g. "VP9") */
+  codec?: string;
+  /** true when the source is re-encoded to H.264 because nothing playable exists */
+  transcode?: boolean;
 }
 
 export interface VideoInfo {
@@ -179,7 +190,18 @@ export interface VideoInfo {
 
 export type ResolvedDownload =
   | { mode: 'proxy'; url: string; fileName: string; mime: string; headers: Record<string, string> }
-  | { mode: 'merge'; videoUrl: string; audioUrl: string; copyAudio: boolean; fileName: string; mime: string; headers: Record<string, string> }
+  | {
+      mode: 'merge';
+      videoUrl: string;
+      /** Separate audio stream; omitted when the video input already carries audio */
+      audioUrl?: string;
+      copyAudio: boolean;
+      /** Re-encode the video track to H.264 instead of stream-copying it */
+      transcodeVideo: boolean;
+      fileName: string;
+      mime: string;
+      headers: Record<string, string>;
+    }
   | { mode: 'mp3'; url: string; fileName: string; mime: string; headers: Record<string, string> };
 
 export class VideoError extends Error {
@@ -228,8 +250,9 @@ function attemptsFor(platform: Platform | 'unknown'): Attempt[] {
 
   if (platform === 'youtube') {
     return [
-      { ...base, extractorArgs: 'youtube:player_client=default,android_vr' },
-      { ...base, extractorArgs: 'youtube:player_client=tv,web_safari' },
+      { ...base, extractorArgs: 'youtube:player_client=android_creator,android' },
+      { ...base, extractorArgs: 'youtube:player_client=android,mweb' },
+      { ...base, extractorArgs: 'youtube:player_client=web,android_vr' },
       { ...base, extractorArgs: 'youtube:player_client=ios,mweb' },
     ];
   }
@@ -433,51 +456,155 @@ function audioOnlyFormats(formats: VideoFormat[]): VideoFormat[] {
     });
 }
 
-function buildQualities(formats: VideoFormat[], canMerge: boolean): QualityOption[] {
-  const progressive = progressiveFormats(formats);
-  const videoOnly = videoOnlyFormats(formats);
+/** Resolution in "p": the short side, so a 720x1280 reel is 720p, not 1280p. */
+function resolutionOf(f: VideoFormat): number {
+  if (f.width && f.height) return Math.min(f.width, f.height);
+  return f.height ?? 0;
+}
 
-  const maxProgressive = Math.max(0, ...progressive.map((f) => f.height ?? 0));
-  const maxVideoOnly = canMerge ? Math.max(0, ...videoOnly.map((f) => f.height ?? 0)) : 0;
-  const maxHeight = Math.max(maxProgressive, maxVideoOnly);
+/**
+ * H.264 is the only video codec that plays everywhere (QuickTime, iPhone
+ * Photos, the stock Windows player, TVs). Facebook and X progressive files omit
+ * codec fields but are H.264 MP4, so "unknown" in an MP4 counts as playable.
+ */
+function isPlayableEverywhere(f: VideoFormat): boolean {
+  const codec = f.vcodec.toLowerCase();
+  if (codec.startsWith('avc') || codec.startsWith('h264')) return true;
+  if (codec === 'unknown') return f.ext === 'mp4' || f.ext === 'm4v' || f.ext === 'mov';
+  return false;
+}
 
-  const options: QualityOption[] = [];
+function codecLabel(f: VideoFormat): string | undefined {
+  const codec = f.vcodec.toLowerCase();
+  if (codec.startsWith('vp09') || codec.startsWith('vp9')) return 'VP9';
+  if (codec.startsWith('av01')) return 'AV1';
+  if (codec.startsWith('hvc1') || codec.startsWith('hev1') || codec.startsWith('hevc')) return 'HEVC';
+  if (codec.startsWith('vp8')) return 'VP8';
+  return undefined;
+}
 
-  for (const step of QUALITY_LADDER) {
-    if (step.height > maxHeight) continue;
-    const bestProgressive = progressive.filter((f) => (f.height ?? 0) <= step.height)[0];
-    const bestVideoOnly = videoOnly.filter((f) => (f.height ?? 0) <= step.height)[0];
-    const useMerge = canMerge && (bestVideoOnly?.height ?? 0) > (bestProgressive?.height ?? 0);
-    const source = useMerge ? bestVideoOnly : bestProgressive;
-    if (!source) continue;
+/** One concrete way of producing a video file. */
+interface VideoPlan {
+  kind: 'progressive' | 'merge';
+  video: VideoFormat;
+  audio?: VideoFormat;
+  resolution: number;
+  compatible: boolean;
+  /** Re-encode to H.264 because no playable stream exists at all */
+  transcode: boolean;
+  approxSize?: number;
+}
 
-    const actualHeight = source.height ?? step.height;
+function videoPlans(formats: VideoFormat[], canMerge: boolean): VideoPlan[] {
+  const audio = audioOnlyFormats(formats)[0];
+  const plans: VideoPlan[] = progressiveFormats(formats).map((f) => ({
+    kind: 'progressive',
+    video: f,
+    resolution: resolutionOf(f),
+    compatible: isPlayableEverywhere(f),
+    transcode: false,
+    approxSize: f.filesize,
+  }));
 
-    // Skip a rung when it resolves to the same stream as the previous rung
-    if (options.some((o) => o.height === actualHeight)) continue;
-
-    options.push({
-      id: step.id,
-      // Label by what the file really is, not by the rung it was matched to
-      label: actualHeight >= 2160 ? '4K' : `${actualHeight}p`,
-      height: actualHeight,
-      needsMerge: useMerge,
-      approxSize: source.filesize,
-    });
+  if (canMerge && audio) {
+    for (const f of videoOnlyFormats(formats)) {
+      plans.push({
+        kind: 'merge',
+        video: f,
+        audio,
+        resolution: resolutionOf(f),
+        compatible: isPlayableEverywhere(f),
+        transcode: false,
+        approxSize: f.filesize && audio.filesize ? f.filesize + audio.filesize : f.filesize,
+      });
+    }
   }
 
-  if (options.length > 0) {
-    const top = options[0];
-    options.unshift({ id: 'best', label: 'Best', height: top.height, needsMerge: top.needsMerge, approxSize: top.approxSize });
-  } else if (progressive.length > 0 || videoOnly.length > 0) {
-    const fallback = progressive[0] ?? videoOnly[0];
-    options.push({
-      id: 'best',
-      label: 'Best',
-      height: fallback.height ?? 0,
-      needsMerge: !fallback.hasAudio,
-      approxSize: fallback.filesize,
-    });
+  return plans;
+}
+
+function comparePlans(a: VideoPlan, b: VideoPlan): number {
+  if (b.resolution !== a.resolution) return b.resolution - a.resolution;
+  // Same resolution: a ready-made file beats an ffmpeg merge
+  if (a.kind !== b.kind) return a.kind === 'progressive' ? -1 : 1;
+  const extRank = (p: VideoPlan) => (p.video.ext === 'mp4' ? 0 : 1);
+  if (extRank(a) !== extRank(b)) return extRank(a) - extRank(b);
+  return (b.video.tbr ?? 0) - (a.video.tbr ?? 0);
+}
+
+/**
+ * Picks the plan for a quality rung. Shared by /info (to list rungs) and
+ * /download (to serve one), so the two always agree.
+ *
+ * - Playable H.264 sources always win, even over a sharper VP9/AV1 stream of
+ *   the same size. Facebook ships 720x1280 both as H.264 and as VP9; merging
+ *   the VP9 one produced MP4s that most players opened as audio-only.
+ * - YouTube only serves 1440p/4K as VP9/AV1, so those rungs stay available
+ *   when the user explicitly asks for them (flagged in the UI), but never as
+ *   the default "Best".
+ * - If nothing playable exists at all, the best stream is re-encoded to H.264.
+ */
+function pickPlan(
+  plans: VideoPlan[],
+  maxResolution: number,
+  platform: Platform | 'unknown',
+  isBest: boolean,
+  canTranscode: boolean,
+): VideoPlan | undefined {
+  if (plans.length === 0) return undefined;
+
+  let pool = plans.filter((p) => p.resolution <= maxResolution);
+  if (pool.length === 0) {
+    const lowest = Math.min(...plans.map((p) => p.resolution));
+    pool = plans.filter((p) => p.resolution === lowest);
+  }
+
+  const playable = pool.filter((p) => p.compatible).sort(comparePlans)[0];
+  const other = pool.filter((p) => !p.compatible).sort(comparePlans)[0];
+
+  if (!playable) {
+    if (!other) return undefined;
+    return canTranscode ? { ...other, transcode: true } : other;
+  }
+
+  if (!isBest && other && platform === 'youtube') {
+    const maxPlayable = Math.max(...plans.filter((p) => p.compatible).map((p) => p.resolution));
+    if (other.resolution > maxPlayable) return other;
+  }
+
+  return playable;
+}
+
+function toQualityOption(id: Quality, plan: VideoPlan): QualityOption {
+  return {
+    id,
+    label: id === 'best' ? 'Best' : plan.resolution >= 2160 ? '4K' : `${plan.resolution}p`,
+    height: plan.resolution,
+    needsMerge: plan.kind === 'merge' || plan.transcode,
+    approxSize: plan.transcode ? undefined : plan.approxSize,
+    compatible: plan.compatible || plan.transcode,
+    codec: plan.compatible || plan.transcode ? undefined : codecLabel(plan.video),
+    transcode: plan.transcode || undefined,
+  };
+}
+
+function buildQualities(formats: VideoFormat[], platform: Platform | 'unknown', canMerge: boolean): QualityOption[] {
+  const plans = videoPlans(formats, canMerge);
+  if (plans.length === 0) return [];
+
+  const best = pickPlan(plans, Number.POSITIVE_INFINITY, platform, true, canMerge);
+  if (!best) return [];
+
+  const maxResolution = Math.max(...plans.map((p) => p.resolution));
+  const options: QualityOption[] = [toQualityOption('best', best)];
+  const seen = new Set<number>();
+
+  for (const step of QUALITY_LADDER) {
+    if (step.height > maxResolution) continue;
+    const plan = pickPlan(plans, step.height, platform, false, canMerge);
+    if (!plan || seen.has(plan.resolution)) continue;
+    seen.add(plan.resolution);
+    options.push(toQualityOption(step.id, plan));
   }
 
   return options;
@@ -540,7 +667,7 @@ export async function getVideoInfo(url: string): Promise<VideoInfo> {
     platform,
     isLive: Boolean(item.is_live),
     formats,
-    qualities: buildQualities(formats, canMerge),
+    qualities: buildQualities(formats, platform, canMerge),
     hasAudioOnly: audioOnlyFormats(formats).length > 0,
     canConvertMp3: canMerge,
   };
@@ -612,38 +739,36 @@ export async function resolveDownload(url: string, options: ResolveOptions): Pro
     return { mode: 'proxy', url: audio.url, fileName: `${baseName}.${ext}`, mime, headers };
   }
 
-  const requested = options.quality && options.quality !== 'best' ? parseInt(options.quality, 10) : Number.POSITIVE_INFINITY;
-  const progressive = progressiveFormats(info.formats).filter((f) => (f.height ?? 0) <= requested);
-  const videoOnly = videoOnlyFormats(info.formats).filter((f) => (f.height ?? 0) <= requested);
-  const audio = audioOnlyFormats(info.formats)[0];
-  const canMerge = Boolean(getFfmpegPath()) && Boolean(audio);
+  const canMerge = Boolean(getFfmpegPath());
+  const plans = videoPlans(info.formats, canMerge);
+  const isBest = !options.quality || options.quality === 'best';
+  const requested = isBest ? Number.POSITIVE_INFINITY : parseInt(options.quality as string, 10);
+  const plan = pickPlan(plans, requested, info.platform, isBest, canMerge);
 
-  const bestProgressive = progressive[0];
-  const bestVideoOnly = videoOnly[0];
+  if (!plan) {
+    throw new VideoError('NO_STREAM', 'No downloadable video stream was found.', 404);
+  }
 
-  if (canMerge && bestVideoOnly && (bestVideoOnly.height ?? 0) > (bestProgressive?.height ?? 0)) {
+  const suffix = plan.resolution ? `-${plan.resolution}p` : '';
+
+  if (plan.kind === 'merge' || plan.transcode) {
+    const audio = plan.audio;
     return {
       mode: 'merge',
-      videoUrl: bestVideoOnly.url,
-      audioUrl: audio.url,
-      // AAC copies straight into MP4; Opus/Vorbis has to be re-encoded
-      copyAudio: audio.acodec.startsWith('mp4a') || audio.ext === 'm4a',
-      fileName: `${baseName}-${bestVideoOnly.height ?? 'hd'}p.mp4`,
+      videoUrl: plan.video.url,
+      audioUrl: audio?.url,
+      copyAudio: audio ? audio.acodec.startsWith('mp4a') || audio.ext === 'm4a' : true,
+      transcodeVideo: plan.transcode,
+      fileName: `${baseName}${suffix}.mp4`,
       mime: 'video/mp4',
       headers,
     };
   }
 
-  const picked = bestProgressive ?? progressiveFormats(info.formats)[0] ?? bestVideoOnly ?? videoOnlyFormats(info.formats)[0];
-  if (!picked) {
-    throw new VideoError('NO_STREAM', 'No downloadable video stream was found.', 404);
-  }
-
-  const ext = picked.ext === 'webm' ? 'webm' : 'mp4';
-  const suffix = picked.height ? `-${picked.height}p` : '';
+  const ext = plan.video.ext === 'webm' ? 'webm' : 'mp4';
   return {
     mode: 'proxy',
-    url: picked.url,
+    url: plan.video.url,
     fileName: `${baseName}${suffix}.${ext}`,
     mime: ext === 'webm' ? 'video/webm' : 'video/mp4',
     headers,

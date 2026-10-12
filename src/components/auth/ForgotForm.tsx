@@ -2,7 +2,7 @@
 
 import { useActionState } from 'react';
 import Link from 'next/link';
-import { forgotPasswordAction, type AuthState } from '@/app/account/(auth)/actions';
+import { forgotPasswordAction, type AuthState } from '@/app/(site)/account/(auth)/actions';
 import { Alert, Field, SubmitButton } from './primitives';
 
 const EMPTY: AuthState = {};

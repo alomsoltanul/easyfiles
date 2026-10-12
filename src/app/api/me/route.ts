@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getAccount, getEntitlements } from '@/lib/auth';
 import { ANON_ENTITLEMENTS } from '@/lib/entitlements';
-import { adminHref } from '@/lib/admin-path';
 import type { MeResponse } from '@/lib/me';
 
 export const dynamic = 'force-dynamic';
@@ -12,6 +11,10 @@ export const dynamic = 'force-dynamic';
  * Client components read this instead of holding plan state locally, so a
  * downgrade or an admin change takes effect on the next page load rather than
  * whenever some cached value happens to expire.
+ *
+ * Nothing about the admin console appears here. Console accounts are a separate
+ * system with a separate session, so a customer response has nothing to say
+ * about it — not even to an admin who happens to also be a customer.
  */
 export async function GET() {
   const [account, entitlements] = await Promise.all([getAccount(), getEntitlements()]);
@@ -24,7 +27,6 @@ export async function GET() {
           email: account.profile.email,
           fullName: account.profile.full_name,
           avatarUrl: account.profile.avatar_url,
-          isAdmin: account.profile.role === 'admin',
         },
         planId: entitlements.planId,
         planName: entitlements.plan.name,
@@ -38,7 +40,6 @@ export async function GET() {
               cancelAtPeriodEnd: account.subscription.cancel_at_period_end,
             }
           : null,
-        adminPath: account.profile.role === 'admin' ? adminHref() : null,
       }
     : {
         signedIn: false,
@@ -48,7 +49,6 @@ export async function GET() {
         limits: ANON_ENTITLEMENTS.limits,
         usageToday: ANON_ENTITLEMENTS.usageToday,
         subscription: null,
-        adminPath: null,
       };
 
   return NextResponse.json(body, {

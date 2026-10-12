@@ -206,29 +206,52 @@ export async function streamDownload(resolved: ResolvedDownload, request: Reques
   }
 
   if (resolved.mode === 'merge') {
-    const [video, audio] = await Promise.all([
-      openChunked(resolved.videoUrl, resolved.headers),
-      openChunked(resolved.audioUrl, resolved.headers),
-    ]);
+    if (resolved.audioUrl) {
+      const [video, audio] = await Promise.all([
+        openChunked(resolved.videoUrl, resolved.headers),
+        openChunked(resolved.audioUrl, resolved.headers),
+      ]);
 
+      const args = [
+        '-hide_banner',
+        '-loglevel', 'error',
+        '-nostdin',
+        '-i', 'pipe:3',
+        '-i', 'pipe:4',
+        '-map', '0:v:0',
+        '-map', '1:a:0',
+        '-c:v', resolved.transcodeVideo ? 'libx264' : 'copy',
+        ...(resolved.transcodeVideo ? ['-preset', 'ultrafast', '-crf', '23'] : []),
+        '-c:a', resolved.copyAudio ? 'copy' : 'aac',
+        ...(resolved.copyAudio ? [] : ['-b:a', '192k']),
+        // Fragmented MP4: writable without seeking back to patch the header
+        '-movflags', 'frag_keyframe+empty_moov+default_base_moof',
+        '-f', 'mp4',
+        'pipe:1',
+      ];
+
+      return ffmpegResponse(resolved, args, [video.stream, audio.stream], request.signal);
+    }
+
+    // Single input transcode (e.g. converting a VP9/AV1 progressive file to compatible H.264)
+    const video = await openChunked(resolved.videoUrl, resolved.headers);
     const args = [
       '-hide_banner',
       '-loglevel', 'error',
       '-nostdin',
       '-i', 'pipe:3',
-      '-i', 'pipe:4',
       '-map', '0:v:0',
-      '-map', '1:a:0',
-      '-c:v', 'copy',
+      '-map', '0:a:0?',
+      '-c:v', resolved.transcodeVideo ? 'libx264' : 'copy',
+      ...(resolved.transcodeVideo ? ['-preset', 'ultrafast', '-crf', '23'] : []),
       '-c:a', resolved.copyAudio ? 'copy' : 'aac',
       ...(resolved.copyAudio ? [] : ['-b:a', '192k']),
-      // Fragmented MP4: writable without seeking back to patch the header
       '-movflags', 'frag_keyframe+empty_moov+default_base_moof',
       '-f', 'mp4',
       'pipe:1',
     ];
 
-    return ffmpegResponse(resolved, args, [video.stream, audio.stream], request.signal);
+    return ffmpegResponse(resolved, args, [video.stream], request.signal);
   }
 
   const audio = await openChunked(resolved.url, resolved.headers);

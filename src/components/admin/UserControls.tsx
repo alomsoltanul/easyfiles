@@ -3,17 +3,17 @@
 import { useActionState } from 'react';
 import {
   grantPlanAction,
+  revokeLegacyRoleAction,
   setUserBanAction,
-  setUserRoleAction,
   type AdminActionState,
-} from '@/app/(admin)/console/actions';
+} from '@/app/(admin)/admin-console/(dashboard)/actions';
 import { PAID_PLAN_IDS, PLANS } from '@/lib/plans';
 import { Alert, SubmitButton } from '@/components/auth/primitives';
 
 const EMPTY: AdminActionState = {};
 
 const input =
-  'w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm focus:border-emerald-400 focus:outline-none';
+  'w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm focus:border-indigo-400 focus:outline-none';
 const label = 'mb-1.5 block text-[13px] font-semibold text-slate-700';
 
 export function GrantPlanForm({ userId, currentPlan }: { userId: string; currentPlan: string }) {
@@ -58,19 +58,24 @@ export function GrantPlanForm({ userId, currentPlan }: { userId: string; current
   );
 }
 
-export function RoleForm({ userId, role }: { userId: string; role: string }) {
-  const [state, submit] = useActionState(setUserRoleAction, EMPTY);
-  const promoting = role !== 'admin';
+/**
+ * Clears the pre-console role='admin' flag. Console access itself is not
+ * granted here any more — it lives in admin_users, under Team &amp; access.
+ */
+export function LegacyRoleForm({ userId }: { userId: string }) {
+  const [state, submit] = useActionState(revokeLegacyRoleAction, EMPTY);
 
   return (
     <form action={submit} className="space-y-3">
       {state.error && <Alert tone="error">{state.error}</Alert>}
       {state.notice && <Alert tone="notice">{state.notice}</Alert>}
       <input type="hidden" name="user_id" value={userId} />
-      <input type="hidden" name="role" value={promoting ? 'admin' : 'user'} />
-      <SubmitButton variant="ghost">
-        {promoting ? 'Make admin' : 'Remove admin access'}
-      </SubmitButton>
+      <SubmitButton variant="ghost">Remove elevated database access</SubmitButton>
+      <p className="text-xs text-slate-400">
+        This account was an admin before the console had its own logins. The flag no longer opens
+        the console, but it still lets this customer&apos;s own session read other customers&apos;
+        rows.
+      </p>
     </form>
   );
 }

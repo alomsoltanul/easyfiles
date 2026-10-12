@@ -2,7 +2,7 @@
 
 import { useActionState } from 'react';
 import Link from 'next/link';
-import { signUpAction, type AuthState } from '@/app/account/(auth)/actions';
+import { signUpAction, type AuthState } from '@/app/(site)/account/(auth)/actions';
 import { Alert, Divider, Field, SubmitButton } from './primitives';
 import OAuthButtons from './OAuthButtons';
 

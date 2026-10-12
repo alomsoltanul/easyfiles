@@ -9,6 +9,8 @@
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
 export type UserRole = 'user' | 'admin';
+/** Console permission levels — see supabase/migrations/0006_admin_console.sql. */
+export type AdminRole = 'owner' | 'admin' | 'viewer';
 export type BillingInterval = 'month' | 'year';
 export type SubscriptionStatus =
   | 'trialing'
@@ -216,6 +218,55 @@ export interface Database {
         Update: Partial<Database['public']['Tables']['feature_flags']['Insert']>;
         Relationships: [];
       };
+      admin_users: {
+        Row: {
+          id: string;
+          email: string;
+          name: string | null;
+          image_url: string | null;
+          password_hash: string | null;
+          google_sub: string | null;
+          role: AdminRole;
+          disabled_at: string | null;
+          last_login_at: string | null;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          email: string;
+          name?: string | null;
+          image_url?: string | null;
+          password_hash?: string | null;
+          google_sub?: string | null;
+          role?: AdminRole;
+          disabled_at?: string | null;
+          last_login_at?: string | null;
+          created_by?: string | null;
+        };
+        Update: Partial<Database['public']['Tables']['admin_users']['Insert']>;
+        Relationships: [];
+      };
+      admin_login_attempts: {
+        Row: {
+          id: string;
+          email: string;
+          ip: string | null;
+          ok: boolean;
+          reason: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          email: string;
+          ip?: string | null;
+          ok?: boolean;
+          reason?: string | null;
+        };
+        Update: Partial<Database['public']['Tables']['admin_login_attempts']['Insert']>;
+        Relationships: [];
+      };
     };
     Views: Record<never, never>;
     Functions: {
@@ -244,6 +295,7 @@ export interface Database {
     };
     Enums: {
       user_role: UserRole;
+      admin_role: AdminRole;
       billing_interval: BillingInterval;
       subscription_status: SubscriptionStatus;
       run_status: RunStatus;
@@ -258,3 +310,5 @@ export type SubscriptionRow = Database['public']['Tables']['subscriptions']['Row
 export type ToolRun = Database['public']['Tables']['tool_runs']['Row'];
 export type UsageDaily = Database['public']['Tables']['usage_daily']['Row'];
 export type AdminAudit = Database['public']['Tables']['admin_audit']['Row'];
+export type AdminUser = Database['public']['Tables']['admin_users']['Row'];
+export type AdminLoginAttempt = Database['public']['Tables']['admin_login_attempts']['Row'];

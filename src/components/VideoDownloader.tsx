@@ -10,6 +10,9 @@ interface QualityOption {
   height: number;
   needsMerge: boolean;
   approxSize?: number;
+  compatible?: boolean;
+  codec?: string;
+  transcode?: boolean;
 }
 
 interface VideoInfo {
@@ -388,7 +391,14 @@ export default function VideoDownloader({ platform: fixedPlatform, title, descri
                         quality === q.id ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300 hover:bg-slate-50'
                       }`}
                     >
-                      {q.label}
+                      <div className="flex items-center justify-center gap-1">
+                        <span>{q.label}</span>
+                        {q.codec && (
+                          <span className={`text-[9px] px-1 py-0.2 rounded font-medium ${quality === q.id ? 'bg-slate-700 text-slate-200' : 'bg-slate-100 text-slate-600'}`}>
+                            {q.codec}
+                          </span>
+                        )}
+                      </div>
                       <span className="block text-[10px] font-normal opacity-70">
                         {q.id === 'best' ? `${q.height}p` : formatSize(q.approxSize) ?? `${q.height}p`}
                       </span>
@@ -398,6 +408,11 @@ export default function VideoDownloader({ platform: fixedPlatform, title, descri
                 {qualities.find((q) => q.id === quality)?.needsMerge && (
                   <p className="text-xs text-slate-500 mt-2">
                     This quality is merged from separate video and audio streams — it takes a little longer to start.
+                  </p>
+                )}
+                {qualities.find((q) => q.id === quality)?.codec && (
+                  <p className="text-xs text-amber-600 mt-1">
+                    Note: This format uses {qualities.find((q) => q.id === quality)?.codec}. It plays in modern browsers (Chrome/Edge/Firefox) and VLC, but might not play in older QuickTime players.
                   </p>
                 )}
               </div>

@@ -1,8 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import AppHeader from "@/components/AppHeader";
-import GlobalFooter from "@/components/GlobalFooter";
 import { FREE_TOOL_COUNT, TOOL_COUNT } from "@/lib/tools";
 import { getSiteUrl } from "@/lib/site";
 
@@ -23,6 +21,14 @@ export const metadata: Metadata = {
   keywords: ["image converter", "heic to jpg", "png to webp", "pdf merger", "pdf compressor", "pdf to word", "json formatter", "ocr scanner", "video downloader", "image compressor"],
 };
 
+/**
+ * Document shell only — no navigation.
+ *
+ * The public site's header and footer live in app/(site)/layout.tsx, and the
+ * admin console brings its own chrome in app/(admin)/layout.tsx. Keeping this
+ * layout empty is what lets the console render as a self-contained dashboard
+ * instead of a page inside the marketing site.
+ */
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -34,9 +40,7 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} antialiased`}
     >
       <body className="min-h-screen bg-slate-50 flex flex-col" suppressHydrationWarning>
-        <AppHeader />
-        <main className="flex-1">{children}</main>
-        <GlobalFooter />
+        {children}
       </body>
     </html>
   );

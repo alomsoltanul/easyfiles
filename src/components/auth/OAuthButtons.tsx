@@ -1,6 +1,6 @@
 'use client';
 
-import { oauthAction } from '@/app/account/(auth)/actions';
+import { oauthAction } from '@/app/(site)/account/(auth)/actions';
 import { SubmitButton } from './primitives';
 
 /**

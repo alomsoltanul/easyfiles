@@ -7,7 +7,7 @@ import {
   deleteAccountAction,
   updateProfileAction,
   type SettingsState,
-} from '@/app/account/(dashboard)/actions';
+} from '@/app/(site)/account/(dashboard)/actions';
 import { Alert, Field, SubmitButton } from '@/components/auth/primitives';
 
 const EMPTY: SettingsState = {};

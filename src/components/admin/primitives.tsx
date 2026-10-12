@@ -1,5 +1,31 @@
 import Link from 'next/link';
 
+/**
+ * Title block for a console screen. The dashboard shell has no page title of
+ * its own, so each screen states what it is.
+ */
+export function PageHeader({
+  title,
+  description,
+  action,
+}: {
+  title: string;
+  description?: string;
+  action?: React.ReactNode;
+}) {
+  return (
+    <header className="mb-5 flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <h1 className="text-xl font-bold tracking-tight text-slate-900">{title}</h1>
+        {description && (
+          <p className="mt-1 max-w-2xl text-[13px] leading-relaxed text-slate-500">{description}</p>
+        )}
+      </div>
+      {action}
+    </header>
+  );
+}
+
 export function StatCard({
   label,
   value,

@@ -4,18 +4,19 @@
  * is an error here, so don't add one.
  *
  * Three jobs:
- *   1. refresh the Supabase auth cookie on every page request
- *   2. map the secret admin path onto the real /console routes
+ *   1. refresh the Supabase auth cookie on every page request (customers only —
+ *      admins have their own NextAuth session and are not in Supabase at all)
+ *   2. map the secret admin path onto the real /admin-console routes
  *   3. make guessable admin and login paths return the custom 404
  *
- * The role check is NOT here — it lives in the admin layout's requireAdmin(),
- * which renders the same 404 for a signed-in non-admin. Keeping the DB read out
- * of proxy keeps every page request fast.
+ * No authorisation happens here. The console's gate is requireAdminActor() in
+ * the dashboard layout, which reads the admin_users row; keeping that DB read
+ * out of proxy keeps every page request on the public site fast.
  */
 
 import { NextResponse, type NextRequest } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
-import { ADMIN_PATH, ADMIN_ROUTE_ROOT } from '@/lib/admin-path';
+import { ADMIN_PATH, ADMIN_ROUTE_ROOT, toAdminRoute } from '@/lib/admin/path';
 
 /**
  * Rewriting to a path with no route makes Next render app/not-found.tsx with a
@@ -41,6 +42,20 @@ const DECOY_PREFIXES = [
   '/phpmyadmin',
   '/.env',
   '/.git',
+  /*
+   * NextAuth endpoints that answer with a redirect to the console login screen,
+   * which would hand the secret path to anyone who asked for them.
+   *
+   * Nothing needs them. next-auth's signIn()/signOut() run the Auth handler
+   * in-process from a Server Action rather than over HTTP, so blocking these
+   * closes both the address leak and the only unauthenticated way to submit a
+   * password. /api/auth/callback/google stays open — the OAuth round trip has
+   * to come back somewhere.
+   */
+  '/api/auth/signin',
+  '/api/auth/signout',
+  '/api/auth/error',
+  '/api/auth/callback/credentials',
 ];
 
 function isDecoy(pathname: string): boolean {
@@ -58,10 +73,11 @@ function notFound(request: NextRequest): NextResponse {
 function route(request: NextRequest): NextResponse {
   const { pathname } = request.nextUrl;
 
-  // Secret path -> real admin routes. /secret/users becomes /console/users.
+  // Secret path -> real admin routes. /secret/users becomes
+  // /admin-console/users.
   if (pathname === ADMIN_PATH || pathname.startsWith(`${ADMIN_PATH}/`)) {
     const url = request.nextUrl.clone();
-    url.pathname = `${ADMIN_ROUTE_ROOT}${pathname.slice(ADMIN_PATH.length)}`;
+    url.pathname = toAdminRoute(pathname);
     return NextResponse.rewrite(url);
   }
 

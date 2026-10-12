@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { signOutAction } from '@/app/account/(auth)/actions';
+import { signOutAction } from '@/app/(site)/account/(auth)/actions';
 import { useMe } from '@/hooks/useEntitlements';
 
 function initials(name: string | null, email: string): string {
@@ -182,16 +182,6 @@ export default function AccountMenu({ compact = false }: { compact?: boolean }) 
                 {link.label}
               </Link>
             ))}
-
-            {user.isAdmin && me.adminPath && (
-              <Link
-                href={me.adminPath}
-                onClick={() => setOpen(false)}
-                className="block rounded-lg px-3 py-2 text-sm font-medium text-violet-700 hover:bg-violet-50"
-              >
-                Admin console
-              </Link>
-            )}
           </div>
 
           <div className="border-t border-slate-100 p-1.5">

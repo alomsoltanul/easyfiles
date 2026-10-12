@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { notFound, redirect } from 'next/navigation';
+import { redirect } from 'next/navigation';
 import type { User } from '@supabase/supabase-js';
 import { createSupabaseServerClient } from './supabase/server';
 import type { Profile, SubscriptionRow } from './supabase/database.types';
@@ -106,19 +106,12 @@ export async function requireUser(returnTo?: string): Promise<Account> {
   return account;
 }
 
-/**
- * For the admin console. Renders the custom 404 rather than a 403 — a 403
- * would confirm to a prober that the secret path exists.
+/*
+ * There is deliberately no admin helper here any more.
+ *
+ * Console access is not a property of a customer account: it lives in
+ * public.admin_users behind NextAuth, and the gate is requireAdminActor() in
+ * src/lib/admin/session.ts. profiles.role is kept only because the RLS policies
+ * in 0002_rls.sql still reference it; the console flags any customer still
+ * carrying role='admin' so the flag can be cleared.
  */
-export async function requireAdmin(): Promise<Account> {
-  const account = await getAccount();
-  if (!account || account.profile.role !== 'admin' || account.profile.banned_at) {
-    notFound();
-  }
-  return account;
-}
-
-export async function isAdmin(): Promise<boolean> {
-  const account = await getAccount();
-  return Boolean(account && account.profile.role === 'admin' && !account.profile.banned_at);
-}

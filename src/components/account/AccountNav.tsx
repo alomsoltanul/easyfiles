@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { signOutAction } from '@/app/account/(auth)/actions';
+import { signOutAction } from '@/app/(site)/account/(auth)/actions';
 
 const LINKS = [
   { href: '/account', label: 'Overview' },
@@ -11,11 +11,7 @@ const LINKS = [
   { href: '/account/settings', label: 'Settings' },
 ];
 
-/**
- * `adminPath` is passed in from the server layout because ADMIN_PATH_SECRET is
- * a server-only variable — the browser cannot derive this link itself.
- */
-export default function AccountNav({ adminPath }: { adminPath: string | null }) {
+export default function AccountNav() {
   const pathname = usePathname();
 
   return (
@@ -34,15 +30,6 @@ export default function AccountNav({ adminPath }: { adminPath: string | null }) 
           </Link>
         );
       })}
-
-      {adminPath && (
-        <Link
-          href={adminPath}
-          className="shrink-0 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-violet-700 transition-colors hover:bg-violet-50 lg:mt-2 lg:border-t lg:border-slate-100 lg:pt-4"
-        >
-          Admin console
-        </Link>
-      )}
 
       <form action={signOutAction} className="mt-2 lg:mt-4">
         <button

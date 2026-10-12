@@ -20,11 +20,16 @@ npx supabase db push
 ```
 
 ```
-supabase/migrations/0001_init.sql        tables, enums, triggers
-supabase/migrations/0002_rls.sql         row level security, is_admin()
-supabase/migrations/0003_seed_plans.sql  the five plan rows
-supabase/migrations/0004_retention.sql   history pruning function
+supabase/migrations/0001_init.sql          tables, enums, triggers
+supabase/migrations/0002_rls.sql           row level security, is_admin()
+supabase/migrations/0003_seed_plans.sql    the five plan rows
+supabase/migrations/0004_retention.sql     history pruning function
+supabase/migrations/0005_fix_profile_guard.sql
+supabase/migrations/0006_admin_console.sql admin_users, login attempts
 ```
+
+`supabase/all-migrations.sql` is all of them concatenated, safe to re-run — paste
+that one file if you would rather not run them individually.
 
 Then in the dashboard:
 
@@ -53,29 +58,82 @@ npx supabase gen types typescript --project-id <ref> > src/lib/supabase/database
 > Free-tier projects pause after 7 days with no activity. Fine while building;
 > move to Pro before launch or auth goes down on a quiet week.
 
-### Make yourself an admin
-
-Sign up through the site first, then in the SQL editor:
-
-```sql
-update public.profiles set role = 'admin' where email = 'you@example.com';
-```
-
 ---
 
 ## 2. Admin console
 
+The console is a separate application. It has its own accounts, its own
+sign-in and its own session cookie, and shares nothing with customer auth:
+
+| | Customers | Console |
+|---|---|---|
+| Identity | Supabase Auth → `auth.users` + `profiles` | NextAuth → `public.admin_users` |
+| Session | `sb-*` cookies | `__Secure-ct-admin.session` |
+| Sign-in | `/account/sign-in` | `/$ADMIN_PATH_SECRET/login` |
+
+A customer account can never become a console account, and a console account
+has no plan, no quota and no tool history.
+
+### Environment
+
 ```
 ADMIN_PATH_SECRET=<random string, no slashes>
+AUTH_SECRET=<npx auth secret>
+
+# optional — enables "Continue with Google" on the console login
+AUTH_GOOGLE_ID=
+AUTH_GOOGLE_SECRET=
 ```
 
-The console is served at `/$ADMIN_PATH_SECRET`. Rotate it any time by changing
-the variable — no code change. `.env.local` already has one generated for local
-use; set a different one in Vercel.
+For Google, add `https://<your-domain>/api/auth/callback/google` (and the
+localhost equivalent) as an authorised redirect URI in the Google Cloud
+console. Google never creates a console account: the address has to exist in
+`admin_users` already, or the sign-in is refused.
 
-Two things guard it. `src/proxy.ts` is the only route to `/console`, and every
-page calls `requireAdmin()`, which renders the ordinary 404 for a signed-in
-non-admin. A 403 would confirm the path exists, so it never returns one.
+### The first owner
+
+There is no sign-up screen and no password-reset email, so the first account is
+created from the command line:
+
+```bash
+node scripts/create-admin.mjs you@example.com --role owner
+```
+
+It prints a generated password once. Sign in at `/$ADMIN_PATH_SECRET/login` and
+change it under **Team & access**. Everyone after that is added from inside the
+console — `--google-only` creates an account with no password at all.
+
+Roles: `viewer` reads everything and changes nothing, `admin` can change
+customers, tools and prices, `owner` can additionally manage console access.
+
+### How it is protected
+
+- `src/proxy.ts` is the only route to `/admin-console`; a direct hit returns the
+  ordinary 404, as do `/admin`, `/login` and the other guessable paths.
+- Every page behind the login calls `requireAdminActor()`, which re-reads the
+  `admin_users` row on each request — disabling an account takes effect on the
+  next click, not when the token expires.
+- Failed sign-ins are counted per email and per IP over a 15-minute window and
+  logged to `admin_login_attempts`; the form only ever says "wrong" or "too
+  many attempts", never which addresses exist.
+- NextAuth's own redirecting endpoints (`/api/auth/signin`, `/signout`,
+  `/error`, `/callback/credentials`) return the 404 so none of them can hand the
+  secret path to a stranger. `pages.error` points at the public
+  `/sign-in-failed` for the same reason. Sign-in and sign-out run in-process
+  from Server Actions, so nothing needs those endpoints.
+- Every change made in the console is written to `admin_audit`, which has no
+  delete path from the app — including for an owner.
+
+Rotate the secret path any time by changing `ADMIN_PATH_SECRET`; no code change
+is needed. `.env.local` already has one generated for local use; set a different
+one in Vercel.
+
+### Leftover `profiles.role = 'admin'`
+
+Console access used to be a flag on the customer profile. It no longer opens
+anything, but it still widens what that customer's own session can read through
+the `is_admin()` RLS policies. The console's overview flags any account still
+carrying it, and the customer detail screen clears it.
 
 ---
 
@@ -145,7 +203,13 @@ NEXT_PUBLIC_SITE_URL=https://easyheictojpg.vercel.app
 ## Test list
 
 - `/login`, `/admin`, `/wp-admin`, any nonsense path → branded 404
-- `/console` → 404; `/$ADMIN_PATH_SECRET` → 404 signed out, console as admin
+- `/admin-console`, `/api/auth/signin`, `/api/auth/callback/credentials` → 404
+- `/$ADMIN_PATH_SECRET` signed out → the console login, and nothing else on the
+  site links to it
+- wrong console password eight times → "too many attempts" for 15 minutes, and
+  eight rows in `admin_login_attempts`
+- disable your own second console account, then reload its session → back at
+  the login screen immediately
 - sign up → confirm email → `/account` shows the Free plan
 - run merge, split and an image convert → three rows in `/account/history`
 - upload a 60 MB file signed out → blocked at 25 MB with an upgrade prompt

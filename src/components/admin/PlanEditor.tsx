@@ -1,19 +1,18 @@
 'use client';
 
 import { useActionState } from 'react';
-import { updatePlanAction, type AdminActionState } from '@/app/(admin)/console/actions';
+import {
+  updatePlanAction,
+  type AdminActionState,
+} from '@/app/(admin)/admin-console/(dashboard)/actions';
 import { Alert } from '@/components/auth/primitives';
 
 const EMPTY: AdminActionState = {};
 
 const input =
-  'w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:border-emerald-400 focus:outline-none';
+  'w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none';
 const label = 'mb-1 block text-[11px] font-bold uppercase tracking-wider text-slate-400';
 
-/**
- * Prices are stored in cents but edited in whole currency units — nobody wants
- * to type 2900 for $29.
- */
 export default function PlanEditor({
   planId,
   name,
