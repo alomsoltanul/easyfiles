@@ -10,6 +10,8 @@ export function Field({
   placeholder,
   required,
   defaultValue,
+  value,
+  onChange,
   hint,
 }: {
   label: string;
@@ -19,6 +21,8 @@ export function Field({
   placeholder?: string;
   required?: boolean;
   defaultValue?: string;
+  value?: string;
+  onChange?: (e: React.ChangeEvent<HTMLInputElement>) => void;
   hint?: string;
 }) {
   return (
@@ -31,6 +35,8 @@ export function Field({
         placeholder={placeholder}
         required={required}
         defaultValue={defaultValue}
+        value={value}
+        onChange={onChange}
         className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-100"
       />
       {hint && <span className="mt-1 block text-xs text-slate-400">{hint}</span>}
@@ -41,11 +47,14 @@ export function Field({
 export function SubmitButton({
   children,
   variant = 'primary',
+  disabled,
 }: {
   children: React.ReactNode;
   variant?: 'primary' | 'ghost';
+  disabled?: boolean;
 }) {
   const { pending } = useFormStatus();
+  const isDisabled = Boolean(disabled || pending);
   const base =
     'inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60';
   const skin =
@@ -54,8 +63,8 @@ export function SubmitButton({
       : 'border border-slate-200 bg-white text-slate-700 hover:border-slate-300';
 
   return (
-    <button type="submit" disabled={pending} className={`${base} ${skin}`}>
-      {pending && (
+    <button type="submit" disabled={isDisabled} className={`${base} ${skin}`}>
+      {isDisabled && (
         <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
           <path className="opacity-90" fill="currentColor" d="M4 12a8 8 0 018-8v3a5 5 0 00-5 5H4z" />

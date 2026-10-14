@@ -943,7 +943,7 @@ export default function ProfileLinkEditor({ initialProfile, initialLinks, siteUr
                       .map((link, i) => (
                         <ProfileLinkCard
                           key={link.id ?? i}
-                          link={{ ...link, id: link.id ?? `demo-${i}`, profile_id: '', click_count: 0, created_at: '', updated_at: '' }}
+                          link={{ ...link, id: link.id ?? `demo-${i}`, profile_id: '', click_count: 0, created_at: '', updated_at: '', icon: link.icon ?? null }}
                           theme={theme}
                         />
                       ))}
@@ -1038,6 +1038,7 @@ export default function ProfileLinkEditor({ initialProfile, initialLinks, siteUr
                             click_count: 0,
                             created_at: '',
                             updated_at: '',
+                            icon: link.icon ?? null,
                           }}
                           theme={theme}
                         />
