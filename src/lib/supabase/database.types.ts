@@ -37,6 +37,36 @@ export interface PlanLimits {
   proTools: boolean;
 }
 
+export type BackgroundType = 'color' | 'gradient' | 'image';
+export type CardStyle = 'rounded' | 'pill' | 'shadow' | 'glass' | 'outline';
+export type ProfileFont = 'sans' | 'serif' | 'mono';
+
+export interface ThemeConfig {
+  theme: string;
+  background_type: BackgroundType;
+  background_value: string;
+  card_style: CardStyle;
+  card_color: string;
+  text_color: string;
+  accent_color: string;
+  font: ProfileFont;
+}
+
+export interface SocialLinks {
+  twitter?: string;
+  instagram?: string;
+  github?: string;
+  youtube?: string;
+  linkedin?: string;
+  tiktok?: string;
+  facebook?: string;
+  threads?: string;
+  discord?: string;
+  twitch?: string;
+  email?: string;
+  website?: string;
+}
+
 export interface Database {
   public: {
     Tables: {
@@ -267,6 +297,98 @@ export interface Database {
         Update: Partial<Database['public']['Tables']['admin_login_attempts']['Insert']>;
         Relationships: [];
       };
+      reserved_usernames: {
+        Row: {
+          username: string;
+          reason: string;
+          created_at: string;
+        };
+        Insert: {
+          username: string;
+          reason?: string;
+          created_at?: string;
+        };
+        Update: Partial<Database['public']['Tables']['reserved_usernames']['Insert']>;
+        Relationships: [];
+      };
+      user_link_profiles: {
+        Row: {
+          id: string;
+          user_id: string;
+          username: string;
+          display_name: string;
+          bio: string;
+          avatar_url: string | null;
+          theme_config: ThemeConfig;
+          social_links: SocialLinks;
+          featured_tool_slug: string | null;
+          is_published: boolean;
+          view_count: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          username: string;
+          display_name: string;
+          bio?: string;
+          avatar_url?: string | null;
+          theme_config?: ThemeConfig;
+          social_links?: SocialLinks;
+          featured_tool_slug?: string | null;
+          is_published?: boolean;
+          view_count?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database['public']['Tables']['user_link_profiles']['Insert']>;
+        Relationships: [
+          {
+            foreignKeyName: 'user_link_profiles_user_id_fkey';
+            columns: ['user_id'];
+            isOneToOne: true;
+            referencedRelation: 'users';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      profile_links: {
+        Row: {
+          id: string;
+          profile_id: string;
+          title: string;
+          url: string;
+          icon: string | null;
+          is_active: boolean;
+          position: number;
+          click_count: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          profile_id: string;
+          title: string;
+          url: string;
+          icon?: string | null;
+          is_active?: boolean;
+          position?: number;
+          click_count?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database['public']['Tables']['profile_links']['Insert']>;
+        Relationships: [
+          {
+            foreignKeyName: 'profile_links_profile_id_fkey';
+            columns: ['profile_id'];
+            isOneToOne: false;
+            referencedRelation: 'user_link_profiles';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
     };
     Views: Record<never, never>;
     Functions: {
@@ -292,6 +414,18 @@ export interface Database {
         };
         Returns: string | null;
       };
+      increment_profile_views: {
+        Args: {
+          p_username: string;
+        };
+        Returns: void;
+      };
+      increment_link_clicks: {
+        Args: {
+          p_link_id: string;
+        };
+        Returns: string | null;
+      };
     };
     Enums: {
       user_role: UserRole;
@@ -312,3 +446,6 @@ export type UsageDaily = Database['public']['Tables']['usage_daily']['Row'];
 export type AdminAudit = Database['public']['Tables']['admin_audit']['Row'];
 export type AdminUser = Database['public']['Tables']['admin_users']['Row'];
 export type AdminLoginAttempt = Database['public']['Tables']['admin_login_attempts']['Row'];
+export type ReservedUsername = Database['public']['Tables']['reserved_usernames']['Row'];
+export type UserLinkProfile = Database['public']['Tables']['user_link_profiles']['Row'];
+export type ProfileLink = Database['public']['Tables']['profile_links']['Row'];

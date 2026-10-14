@@ -6,6 +6,7 @@ import { signOutAction } from '@/app/(site)/account/(auth)/actions';
 
 const LINKS = [
   { href: '/account', label: 'Overview' },
+  { href: '/account/profile-link', label: 'My Link Page' },
   { href: '/account/history', label: 'Tool history' },
   { href: '/account/billing', label: 'Plan & billing' },
   { href: '/account/settings', label: 'Settings' },
