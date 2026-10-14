@@ -20,6 +20,30 @@ export default async function AccountOverviewPage() {
 
   return (
     <div className="space-y-8">
+      {/* Personal Link Hub */}
+      <section className="rounded-2xl border border-blue-100 bg-gradient-to-r from-blue-50/70 via-indigo-50/50 to-purple-50/60 p-5 sm:p-6 shadow-xs">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="text-base">🔗</span>
+              <p className="text-[11px] font-bold uppercase tracking-wider text-blue-900">Personal Link Hub (Linktree)</p>
+            </div>
+            <h3 className="text-lg font-bold text-slate-900">Your Custom Link & Socials Page</h3>
+            <p className="text-xs sm:text-sm text-slate-600 max-w-xl leading-relaxed">
+              Share your links, socials, and spotlight your favorite tools with a custom branded page at your own link name.
+            </p>
+          </div>
+
+          <Link
+            href="/account/profile-link"
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 shadow-sm shrink-0"
+          >
+            <span>+ Add New Link / Customize</span>
+            <span>→</span>
+          </Link>
+        </div>
+      </section>
+
       {/* Plan */}
       <section className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">

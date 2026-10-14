@@ -262,6 +262,17 @@ export default function ProfileLinkEditor({ initialProfile, initialLinks, siteUr
 
             <button
               type="button"
+              onClick={() => {
+                setActiveTab('links');
+                handleAddLink();
+              }}
+              className="px-4 py-2 text-xs sm:text-sm font-bold rounded-xl bg-blue-600 hover:bg-blue-700 text-white shadow-sm transition flex items-center gap-1.5 cursor-pointer"
+            >
+              <span>+ Add Link</span>
+            </button>
+
+            <button
+              type="button"
               onClick={handleSave}
               disabled={isPending}
               className="px-5 py-2 text-xs sm:text-sm font-semibold rounded-xl bg-slate-900 hover:bg-slate-800 text-white shadow-sm transition disabled:opacity-50"
@@ -290,11 +301,11 @@ export default function ProfileLinkEditor({ initialProfile, initialLinks, siteUr
           {/* Navigation Tabs */}
           <div className="flex border-b border-slate-200 overflow-x-auto pb-px">
             {[
-              { id: 'links', label: 'Links' },
-              { id: 'appearance', label: 'Appearance' },
-              { id: 'socials', label: 'Socials' },
-              { id: 'profile', label: 'Profile & Tool' },
-              { id: 'preview', label: 'Live Preview (Mobile)', mobileOnly: true },
+              { id: 'links', label: '🔗 Links' },
+              { id: 'appearance', label: '🎨 Appearance' },
+              { id: 'socials', label: '📱 Socials' },
+              { id: 'profile', label: '⚙️ Profile & Tool' },
+              { id: 'preview', label: '📱 Live Preview (Mobile)', mobileOnly: true },
             ].map((tab) => (
               <button
                 key={tab.id}
@@ -316,26 +327,38 @@ export default function ProfileLinkEditor({ initialProfile, initialLinks, siteUr
           {/* TAB 1: LINKS */}
           {activeTab === 'links' && (
             <div className="space-y-4 pt-2">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-semibold text-slate-700">Your Links ({links.length})</span>
-                <button
-                  type="button"
-                  onClick={handleAddLink}
-                  className="px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-blue-600 hover:bg-blue-700 text-white shadow-sm transition"
-                >
-                  + Add Link
-                </button>
+              {/* Prominent High-Visibility Add Link Action */}
+              <button
+                type="button"
+                onClick={handleAddLink}
+                className="w-full py-4 px-5 rounded-2xl bg-blue-600 hover:bg-blue-700 active:scale-[0.99] text-white font-bold text-base flex items-center justify-center gap-2.5 shadow-md shadow-blue-500/20 transition-all cursor-pointer"
+              >
+                <span className="text-2xl leading-none font-extrabold">+</span>
+                <span>Add New Link</span>
+              </button>
+
+              <div className="flex items-center justify-between pt-1">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                  Your Links ({links.length})
+                </span>
+                <span className="text-xs text-slate-400">Drag or use arrows to reorder</span>
               </div>
 
               {links.length === 0 ? (
-                <div className="bg-white rounded-2xl border border-dashed border-slate-300 p-8 text-center">
-                  <p className="text-sm text-slate-500">No links added yet.</p>
+                <div className="bg-white rounded-2xl border-2 border-dashed border-slate-300 p-8 text-center space-y-3">
+                  <div className="w-12 h-12 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mx-auto text-xl">
+                    🔗
+                  </div>
+                  <h4 className="text-base font-bold text-slate-800">No links added yet</h4>
+                  <p className="text-xs sm:text-sm text-slate-500 max-w-sm mx-auto">
+                    Add links to your social profiles, website, shop, portfolio, or favorite tools.
+                  </p>
                   <button
                     type="button"
                     onClick={handleAddLink}
-                    className="mt-3 px-4 py-2 text-xs font-semibold rounded-xl bg-slate-900 text-white"
+                    className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-bold rounded-xl bg-blue-600 hover:bg-blue-700 text-white shadow-sm transition"
                   >
-                    Add Your First Link
+                    <span>+ Add Your First Link</span>
                   </button>
                 </div>
               ) : (
@@ -452,6 +475,15 @@ export default function ProfileLinkEditor({ initialProfile, initialLinks, siteUr
                       </div>
                     </div>
                   ))}
+
+                  <button
+                    type="button"
+                    onClick={handleAddLink}
+                    className="w-full py-3.5 px-4 rounded-xl border-2 border-dashed border-slate-300 hover:border-blue-500 bg-slate-50/60 hover:bg-blue-50/50 text-slate-600 hover:text-blue-700 font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition cursor-pointer"
+                  >
+                    <span className="text-base font-bold">+</span>
+                    <span>Add Another Link</span>
+                  </button>
                 </div>
               )}
             </div>

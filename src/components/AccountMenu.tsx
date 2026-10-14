@@ -13,6 +13,7 @@ function initials(name: string | null, email: string): string {
 
 const MENU_LINKS = [
   { href: '/account', label: 'Dashboard' },
+  { href: '/account/profile-link', label: 'My Link Page' },
   { href: '/account/history', label: 'Tool history' },
   { href: '/account/billing', label: 'Plan & billing' },
   { href: '/account/settings', label: 'Settings' },
