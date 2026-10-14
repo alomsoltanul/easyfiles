@@ -8,17 +8,27 @@ import OAuthButtons from './OAuthButtons';
 
 const EMPTY: AuthState = {};
 
-export default function SignInForm({ next }: { next: string }) {
+export default function SignInForm({
+  next,
+  initialError,
+  initialNotice,
+}: {
+  next: string;
+  initialError?: string;
+  initialNotice?: string;
+}) {
   const [mode, setMode] = useState<'password' | 'magic'>('password');
   const [passwordState, passwordSubmit] = useActionState(signInAction, EMPTY);
   const [magicState, magicSubmit] = useActionState(magicLinkAction, EMPTY);
 
   const state = mode === 'password' ? passwordState : magicState;
+  const activeError = state.error || initialError;
+  const activeNotice = state.notice || initialNotice;
 
   return (
     <div className="space-y-5">
-      {state.error && <Alert tone="error">{state.error}</Alert>}
-      {state.notice && <Alert tone="notice">{state.notice}</Alert>}
+      {activeError && <Alert tone="error">{activeError}</Alert>}
+      {activeNotice && <Alert tone="notice">{activeNotice}</Alert>}
 
       {mode === 'password' ? (
         <form action={passwordSubmit} className="space-y-4">

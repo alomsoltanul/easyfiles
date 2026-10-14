@@ -6,14 +6,24 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-export default function ForgotPage() {
+export default async function ForgotPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ error?: string; message?: string }>;
+}) {
+  const params = searchParams ? await searchParams : {};
+  const initialError =
+    params.error === 'link'
+      ? params.message || 'That reset link has expired or was invalid. Please request a new one.'
+      : params.message;
+
   return (
     <>
       <h1 className="text-xl font-bold tracking-tight text-slate-900">Reset your password</h1>
       <p className="mt-1.5 mb-6 text-sm text-slate-500">
         Enter the address you signed up with and we’ll send a link to set a new password.
       </p>
-      <ForgotForm />
+      <ForgotForm initialError={initialError} />
     </>
   );
 }

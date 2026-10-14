@@ -100,11 +100,22 @@ export async function forgotPasswordAction(_prev: AuthState, formData: FormData)
   const email = String(formData.get('email') ?? '').trim().toLowerCase();
   if (!email) return { error: 'Enter your email address.' };
 
-  await supabase.auth.resetPasswordForEmail(email, {
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
     redirectTo: absoluteUrl('/auth/callback?next=/account/reset'),
   });
 
-  // Always the same answer, whether or not the address exists.
+  if (error) {
+    if (
+      error.status === 429 ||
+      error.message?.toLowerCase().includes('rate limit') ||
+      error.message?.toLowerCase().includes('seconds')
+    ) {
+      return { error: 'Please wait a minute before requesting another reset email.' };
+    }
+    return { error: error.message };
+  }
+
+  // Generic notice for privacy
   return { notice: 'If that address has an account, a reset link is on its way.' };
 }
 
@@ -119,7 +130,16 @@ export async function resetPasswordAction(_prev: AuthState, formData: FormData):
   if (password !== confirm) return { error: 'The two passwords do not match.' };
 
   const { error } = await supabase.auth.updateUser({ password });
-  if (error) return { error: error.message };
+  if (error) {
+    if (
+      error.message?.toLowerCase().includes('session') ||
+      error.message?.toLowerCase().includes('auth') ||
+      error.status === 401
+    ) {
+      return { error: 'Your reset link has expired or is invalid. Please request a new one.' };
+    }
+    return { error: error.message };
+  }
 
   revalidatePath('/', 'layout');
   redirect('/account?reset=1');

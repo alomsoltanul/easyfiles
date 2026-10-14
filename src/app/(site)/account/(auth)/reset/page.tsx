@@ -1,5 +1,4 @@
 import type { Metadata } from 'next';
-import { redirect } from 'next/navigation';
 import ResetForm from '@/components/auth/ResetForm';
 import { getUser } from '@/lib/auth';
 
@@ -9,12 +8,11 @@ export const metadata: Metadata = {
 };
 
 /**
- * Reached from the reset email by way of /auth/callback, which exchanges the
- * code for a session first — so a visitor here is already authenticated and
- * only needs to set the new password.
+ * Reached from the reset email by way of /auth/callback (PKCE) or direct recovery token.
+ * Renders ResetForm which supports both server-verified sessions and client-side hash tokens.
  */
 export default async function ResetPage() {
-  if (!(await getUser())) redirect('/account/forgot');
+  const user = await getUser();
 
   return (
     <>
@@ -22,7 +20,7 @@ export default async function ResetPage() {
       <p className="mt-1.5 mb-6 text-sm text-slate-500">
         This replaces your old password everywhere you are signed in.
       </p>
-      <ResetForm />
+      <ResetForm hasServerSession={Boolean(user)} />
     </>
   );
 }

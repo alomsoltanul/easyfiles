@@ -7,12 +7,14 @@ import { Alert, Field, SubmitButton } from './primitives';
 
 const EMPTY: AuthState = {};
 
-export default function ForgotForm() {
+export default function ForgotForm({ initialError }: { initialError?: string }) {
   const [state, submit] = useActionState(forgotPasswordAction, EMPTY);
+
+  const activeError = state.error || initialError;
 
   return (
     <div className="space-y-5">
-      {state.error && <Alert tone="error">{state.error}</Alert>}
+      {activeError && <Alert tone="error">{activeError}</Alert>}
       {state.notice && <Alert tone="notice">{state.notice}</Alert>}
 
       <form action={submit} className="space-y-4">
