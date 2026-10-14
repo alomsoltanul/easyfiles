@@ -1,6 +1,6 @@
 'use server';
 
-import { revalidateTag, revalidatePath } from 'next/cache';
+import { revalidatePath } from 'next/cache';
 import { getAccount } from '@/lib/auth';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getSupabaseAdminClient } from '@/lib/supabase/admin';
@@ -210,13 +210,13 @@ export async function saveProfileLinkDataAction(payload: SaveProfilePayload): Pr
     }
   }
 
-  // Revalidate edge caches
-  revalidateTag(`profile-${cleanUsername}`);
+  // Revalidate edge caches and pages
+  revalidatePath(`/${cleanUsername}`, 'page');
   if (oldUsername && oldUsername !== cleanUsername) {
-    revalidateTag(`profile-${oldUsername}`);
+    revalidatePath(`/${oldUsername}`, 'page');
   }
-  revalidatePath('/account/profile-link');
-  revalidatePath(`/${cleanUsername}`);
+  revalidatePath('/account/profile-link', 'page');
+  revalidatePath('/account', 'page');
 
   return { ok: true, username: cleanUsername };
 }
