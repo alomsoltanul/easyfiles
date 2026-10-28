@@ -305,13 +305,18 @@ function attemptsFor(platform: Platform | 'unknown'): Attempt[] {
   const base = baseFlags(platform);
 
   if (platform === 'youtube') {
+    if (IS_VERCEL && !hasCookiesFor('youtube') && !process.env.VIDEO_PROXY_URL) {
+      return [
+        { ...base, extractorArgs: 'youtube:player_client=android,ios;player_skip=webpage,configs' },
+        { ...base, extractorArgs: 'youtube:player_client=web_embedded,visionos;player_skip=webpage,configs' },
+      ];
+    }
     return [
       { ...base, extractorArgs: 'youtube:player_client=web_embedded,default' },
       { ...base },
       {
         ...base,
-        extractorArgs: 'youtube:player_client=tv,tv_downgraded,web_safari,visionos;player_skip=webpage',
-        remoteComponents: 'ejs:github',
+        extractorArgs: 'youtube:player_client=android,ios,visionos;player_skip=webpage,configs',
       },
     ];
   }
@@ -355,6 +360,14 @@ async function runInfo(url: string, platform: Platform | 'unknown', canMerge: bo
       }
       if (platform === 'youtube') {
         if (/private video|members-only|has been removed|not available in your country/i.test(text)) {
+          break;
+        }
+        if (
+          IS_VERCEL &&
+          !hasCookiesFor('youtube') &&
+          !process.env.VIDEO_PROXY_URL &&
+          /sign in to confirm|not a bot/i.test(text)
+        ) {
           break;
         }
       } else if (/login required|requires authentication|private|not available in your country|removed|deleted/i.test(text)) {
@@ -752,6 +765,195 @@ function buildQualities(formats: VideoFormat[], platform: Platform | 'unknown', 
   return options;
 }
 
+export function parseClenFromUrl(url: string): number | undefined {
+  try {
+    const clen = new URL(url).searchParams.get('clen');
+    return clen && /^\d+$/.test(clen) && Number(clen) > 0 ? Number(clen) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export function parseContentRangeTotal(
+  contentRange: string | null,
+  requestedEnd: number,
+  url: string,
+): number | undefined {
+  const match = contentRange?.match(/^bytes\s+(\d+)-(\d+)\/(\d+|\*)$/i);
+  if (!match) return parseClenFromUrl(url);
+  const start = Number(match[1]);
+  const end = Number(match[2]);
+  const totalStr = match[3];
+  if (totalStr !== '*') {
+    const total = Number(totalStr);
+    const chunkLen = end - start + 1;
+    // Direct CDNs (googlevideo.com) put the full file size after '/'.
+    // Range-rewriting proxies (PipedProxy) put chunkLen after '/'.
+    if (total > chunkLen) return total;
+    if (end < requestedEnd) return end + 1;
+  }
+  return parseClenFromUrl(url);
+}
+
+function extractYouTubeVideoId(inputUrl: string): string | null {
+  try {
+    const parsed = new URL(inputUrl);
+    const host = parsed.hostname.toLowerCase();
+    if (host === 'youtu.be' || host.endsWith('.youtu.be')) {
+      const id = parsed.pathname.split('/').filter(Boolean)[0];
+      return id && /^[A-Za-z0-9_-]{11}$/.test(id) ? id : null;
+    }
+    const v = parsed.searchParams.get('v');
+    if (v && /^[A-Za-z0-9_-]{11}$/.test(v)) return v;
+    const parts = parsed.pathname.split('/').filter(Boolean);
+    if (parts.length >= 2 && ['shorts', 'embed', 'live', 'v', 'e'].includes(parts[0])) {
+      return /^[A-Za-z0-9_-]{11}$/.test(parts[1]) ? parts[1] : null;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+async function fetchYouTubePipedFallback(url: string, canMerge: boolean): Promise<VideoInfo | null> {
+  const videoId = extractYouTubeVideoId(url);
+  if (!videoId) return null;
+
+  const configured =
+    process.env.PIPED_API_URLS?.split(',')
+      .map((s) => s.trim())
+      .filter(Boolean) ?? [];
+  const instances = configured.length > 0 ? configured : ['https://api.piped.private.coffee', 'https://pipedapi.kavin.rocks'];
+
+  for (const instance of instances) {
+    try {
+      const apiUrl = `${instance.replace(/\/+$/, '')}/streams/${videoId}`;
+      const res = await fetch(apiUrl, {
+        headers: { 'User-Agent': BROWSER_UA, Accept: 'application/json' },
+        cache: 'no-store',
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!res.ok) continue;
+
+      const data = (await res.json()) as Record<string, unknown>;
+      const formats: VideoFormat[] = [];
+
+      if (Array.isArray(data.videoStreams)) {
+        for (const raw of data.videoStreams) {
+          if (!raw || typeof raw !== 'object') continue;
+          const s = raw as Record<string, unknown>;
+          if (typeof s.url !== 'string' || !s.url.startsWith('http')) continue;
+          const videoOnly = Boolean(s.videoOnly);
+          const mime = String(s.mimeType ?? 'video/mp4').toLowerCase();
+          const ext = mime.includes('webm') ? 'webm' : 'mp4';
+          const heightFromQuality = parseInt(String(s.quality ?? ''), 10);
+          const rawHeight = num(s.height);
+          const rawWidth = num(s.width);
+          const rawFps = num(s.fps);
+          const rawBitrate = num(s.bitrate);
+          const rawLen = num(s.contentLength);
+
+          formats.push({
+            formatId: String(s.itag ?? s.quality ?? 'video'),
+            ext,
+            height:
+              (rawHeight && rawHeight > 0 ? rawHeight : undefined) ??
+              (Number.isFinite(heightFromQuality) ? heightFromQuality : undefined),
+            width: rawWidth && rawWidth > 0 ? rawWidth : undefined,
+            fps: rawFps && rawFps > 0 ? rawFps : undefined,
+            tbr: rawBitrate && rawBitrate > 0 ? rawBitrate / 1000 : undefined,
+            filesize: (rawLen && rawLen > 0 ? rawLen : undefined) ?? parseClenFromUrl(s.url),
+            vcodec: typeof s.codec === 'string' && s.codec ? s.codec : ext === 'mp4' ? 'avc1' : 'vp9',
+            acodec: videoOnly ? 'none' : 'mp4a',
+            hasVideo: true,
+            hasAudio: !videoOnly,
+            note: String(s.quality ?? ''),
+            url: s.url,
+          });
+        }
+      }
+
+      if (Array.isArray(data.audioStreams)) {
+        for (const raw of data.audioStreams) {
+          if (!raw || typeof raw !== 'object') continue;
+          const s = raw as Record<string, unknown>;
+          if (typeof s.url !== 'string' || !s.url.startsWith('http')) continue;
+          const mime = String(s.mimeType ?? 'audio/mp4').toLowerCase();
+          const ext = mime.includes('webm') || mime.includes('opus') ? 'webm' : mime.includes('mpeg') ? 'mp3' : 'm4a';
+          const rawBitrate = num(s.bitrate);
+          const rawLen = num(s.contentLength);
+          const trackType = String(s.audioTrackType ?? '').toUpperCase();
+          const languagePreference = trackType.includes('ORIGINAL') ? 10 : trackType.includes('DUBBED') ? -5 : 0;
+
+          formats.push({
+            formatId: String(s.itag ?? s.quality ?? 'audio'),
+            ext,
+            tbr: rawBitrate && rawBitrate > 0 ? rawBitrate / 1000 : undefined,
+            filesize: (rawLen && rawLen > 0 ? rawLen : undefined) ?? parseClenFromUrl(s.url),
+            vcodec: 'none',
+            acodec: typeof s.codec === 'string' && s.codec ? s.codec : ext === 'm4a' ? 'mp4a' : 'opus',
+            hasVideo: false,
+            hasAudio: true,
+            note: String(s.quality ?? 'audio'),
+            url: s.url,
+            languagePreference,
+          });
+        }
+      }
+
+      if (formats.length === 0 && canMerge && typeof data.hls === 'string' && data.hls.startsWith('http')) {
+        formats.push({
+          formatId: 'hls',
+          ext: 'mp4',
+          vcodec: 'avc1',
+          acodec: 'mp4a',
+          hasVideo: true,
+          hasAudio: true,
+          note: 'hls',
+          url: data.hls,
+          isHls: true,
+        });
+      }
+
+      if (formats.length === 0) continue;
+
+      const title = String(data.title ?? 'video')
+        .replace(/[\x00-\x1f\x7f-\x9f]/g, '')
+        .slice(0, 200);
+
+      return {
+        id: videoId,
+        title,
+        thumbnail: typeof data.thumbnailUrl === 'string' ? data.thumbnailUrl : '',
+        duration: num(data.duration) ?? 0,
+        uploader: String(data.uploader ?? 'Unknown').slice(0, 100),
+        webpageUrl: `https://www.youtube.com/watch?v=${videoId}`,
+        platform: 'youtube',
+        isLive: Boolean(data.livestream),
+        formats,
+        qualities: buildQualities(formats, 'youtube', canMerge),
+        hasAudioOnly: audioOnlyFormats(formats).length > 0,
+        canConvertMp3: canMerge,
+      };
+    } catch {
+      continue;
+    }
+  }
+
+  return null;
+}
+
+function storeCachedInfo(url: string, info: VideoInfo): void {
+  cacheSet(url, info);
+  // Cache under the canonical and normalized URLs too, so a download request
+  // that arrives with webpageUrl still hits the cache.
+  if (info.webpageUrl !== url) cacheSet(info.webpageUrl, info);
+  const normalizedWeb = normalizeUrl(info.webpageUrl);
+  if (normalizedWeb && normalizedWeb !== url && normalizedWeb !== info.webpageUrl) {
+    cacheSet(normalizedWeb, info);
+  }
+}
+
 /**
  * Fetches video metadata. Results are cached briefly so a follow-up download
  * reuses the same (IP-locked) CDN URLs resolved by this instance.
@@ -768,7 +970,24 @@ export async function getVideoInfo(url: string, opts?: { skipCache?: boolean }):
 
   const canMerge = Boolean(getFfmpegPath());
   const platform = detectPlatform(url);
-  const raw = await runInfo(url, platform, canMerge);
+  let raw: Record<string, unknown>;
+  try {
+    raw = await runInfo(url, platform, canMerge);
+  } catch (error) {
+    if (
+      platform === 'youtube' &&
+      error instanceof VideoError &&
+      (error.code === 'BOT_CHECK' || error.code === 'EXTRACT_FAILED' || error.code === 'NO_STREAM')
+    ) {
+      const fallback = await fetchYouTubePipedFallback(url, canMerge);
+      if (fallback) {
+        storeCachedInfo(url, fallback);
+        return fallback;
+      }
+    }
+    throw error;
+  }
+
   const item = extractItem(raw);
 
   const formats = parseFormats(item.formats, canMerge);
@@ -816,15 +1035,7 @@ export async function getVideoInfo(url: string, opts?: { skipCache?: boolean }):
     canConvertMp3: canMerge,
   };
 
-  cacheSet(url, info);
-  // Cache under the canonical and normalized URLs too, so a download request
-  // that arrives with webpageUrl still hits the cache.
-  if (info.webpageUrl !== url) cacheSet(info.webpageUrl, info);
-  const normalizedWeb = normalizeUrl(info.webpageUrl);
-  if (normalizedWeb && normalizedWeb !== url && normalizedWeb !== info.webpageUrl) {
-    cacheSet(normalizedWeb, info);
-  }
-
+  storeCachedInfo(url, info);
   return info;
 }
 
@@ -1004,14 +1215,10 @@ async function probeRange(url: string, headers: Record<string, string>): Promise
     // Drain tiny body to release socket cleanly
     await res.arrayBuffer().catch(() => undefined);
     if (!res.ok) return { ok: false, status: res.status };
-    const contentRange = res.headers.get('content-range');
-    const total = contentRange?.split('/')[1];
     const size =
-      total && /^\d+$/.test(total)
-        ? Number(total)
-        : res.status === 200
-          ? Number(res.headers.get('content-length')) || undefined
-          : undefined;
+      res.status === 206
+        ? parseContentRangeTotal(res.headers.get('content-range'), 1, url)
+        : Number(res.headers.get('content-length')) || parseClenFromUrl(url);
     return { ok: true, status: res.status, size };
   } catch {
     return { ok: false, status: 0 };

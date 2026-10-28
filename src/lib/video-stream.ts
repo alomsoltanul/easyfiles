@@ -16,7 +16,14 @@
 import { spawn } from 'child_process';
 import { Readable } from 'stream';
 import { contentDisposition } from './video-security';
-import { getFfmpegPath, VideoError, waitUntilAvailable, type ResolvedDownload } from './video-downloader';
+import {
+  getFfmpegPath,
+  parseClenFromUrl,
+  parseContentRangeTotal,
+  VideoError,
+  waitUntilAvailable,
+  type ResolvedDownload,
+} from './video-downloader';
 
 const CHUNK_SIZE = 10 * 1024 * 1024;
 
@@ -26,9 +33,9 @@ interface ChunkedSource {
   contentType?: string;
 }
 
-function parseTotal(contentRange: string | null): number | undefined {
-  const total = contentRange?.split('/')[1];
-  return total && /^\d+$/.test(total) ? Number(total) : undefined;
+function parseRangeEnd(contentRange: string | null): number | undefined {
+  const match = contentRange?.match(/^bytes\s+\d+-(\d+)\//i);
+  return match ? Number(match[1]) : undefined;
 }
 
 async function fetchChunkWithRetry(
@@ -60,7 +67,8 @@ async function fetchChunkWithRetry(
  * response if the server ignores the Range header.
  */
 async function openChunked(url: string, headers: Record<string, string>, start = 0): Promise<ChunkedSource> {
-  const first = await fetchChunkWithRetry(url, headers, `bytes=${start}-${start + CHUNK_SIZE - 1}`);
+  const firstEnd = start + CHUNK_SIZE - 1;
+  const first = await fetchChunkWithRetry(url, headers, `bytes=${start}-${firstEnd}`);
 
   if (!first.ok || !first.body) {
     throw new VideoError(
@@ -70,23 +78,29 @@ async function openChunked(url: string, headers: Record<string, string>, start =
     );
   }
 
-  const total =
-    parseTotal(first.headers.get('content-range')) ??
-    (first.status === 200 ? Number(first.headers.get('content-length')) || undefined : undefined);
+  const firstContentRange = first.headers.get('content-range');
+  let total =
+    first.status === 206
+      ? parseContentRangeTotal(firstContentRange, firstEnd, url)
+      : Number(first.headers.get('content-length')) || parseClenFromUrl(url);
   const rangeSupported = first.status === 206;
 
   let position = start;
+  let chunkBytes = 0;
+  const firstRangeEnd = parseRangeEnd(firstContentRange);
+  let isFinalChunk = !rangeSupported || (firstRangeEnd !== undefined && firstRangeEnd < firstEnd);
   let reader: ReadableStreamDefaultReader<Uint8Array> | null = first.body.getReader();
 
   const stream = new ReadableStream<Uint8Array>({
     async pull(controller) {
       while (true) {
         if (!reader) {
-          if (!rangeSupported || (total !== undefined && position >= total)) {
+          if (isFinalChunk || (total !== undefined && position >= total)) {
             controller.close();
             return;
           }
-          const next = await fetchChunkWithRetry(url, headers, `bytes=${position}-${position + CHUNK_SIZE - 1}`);
+          const nextEnd = position + CHUNK_SIZE - 1;
+          const next = await fetchChunkWithRetry(url, headers, `bytes=${position}-${nextEnd}`);
           if (!next.ok || !next.body) {
             if (next.status === 416) {
               controller.close();
@@ -95,14 +109,28 @@ async function openChunked(url: string, headers: Record<string, string>, start =
             controller.error(new Error(`Upstream chunk failed with HTTP ${next.status}`));
             return;
           }
+          const nextCr = next.headers.get('content-range');
+          if (total === undefined) {
+            total = parseContentRangeTotal(nextCr, nextEnd, url);
+          }
+          const nextRangeEnd = parseRangeEnd(nextCr);
+          if (next.status !== 206 || (nextRangeEnd !== undefined && nextRangeEnd < nextEnd)) {
+            isFinalChunk = true;
+          }
+          chunkBytes = 0;
           reader = next.body.getReader();
         }
 
         const { done, value } = await reader.read();
         if (done) {
           reader = null;
+          if (chunkBytes === 0) {
+            controller.close();
+            return;
+          }
           continue;
         }
+        chunkBytes += value.byteLength;
         position += value.byteLength;
         controller.enqueue(value);
         return;
@@ -144,14 +172,27 @@ async function proxyResponse(resolved: Extract<ResolvedDownload, { mode: 'proxy'
     const contentLength = upstream.headers.get('content-length');
     if (contentLength) headers['Content-Length'] = contentLength;
     const contentRange = upstream.headers.get('content-range');
-    if (contentRange) headers['Content-Range'] = contentRange;
+    const knownTotal = resolved.approxSize ?? parseClenFromUrl(resolved.url);
+    const crMatch = contentRange?.match(/^bytes\s+(\d+)-(\d+)\/(\d+|\*)$/i);
+    if (
+      crMatch &&
+      knownTotal &&
+      crMatch[3] !== '*' &&
+      Number(crMatch[3]) === Number(crMatch[2]) - Number(crMatch[1]) + 1 &&
+      knownTotal > Number(crMatch[3])
+    ) {
+      headers['Content-Range'] = `bytes ${crMatch[1]}-${crMatch[2]}/${knownTotal}`;
+    } else if (contentRange) {
+      headers['Content-Range'] = contentRange;
+    }
     headers['Accept-Ranges'] = 'bytes';
     return new Response(upstream.body, { status: upstream.status === 206 ? 206 : 200, headers });
   }
 
   const source = await openChunked(resolved.url, resolved.headers);
   const headers = baseHeaders(resolved);
-  if (source.total) headers['Content-Length'] = String(source.total);
+  const total = source.total ?? resolved.approxSize;
+  if (total) headers['Content-Length'] = String(total);
   headers['Accept-Ranges'] = 'bytes';
 
   return new Response(source.stream, { status: 200, headers });
