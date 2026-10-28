@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isAllowedUrl, normalizeUrl, checkRateLimit, isValidFormat, isValidQuality, type Quality } from '@/lib/video-security';
-import { resolveDownload, VideoError } from '@/lib/video-downloader';
+import { invalidateVideoInfo, resolveDownload, resolveVerifiedDownload, VideoError } from '@/lib/video-downloader';
 import { streamDownload } from '@/lib/video-stream';
 import { verifyDownloadToken } from '@/lib/video-token';
 
@@ -28,13 +28,23 @@ function errorResponse(error: unknown): NextResponse {
 }
 
 async function handle(request: NextRequest, params: DownloadRequest): Promise<Response> {
-  const resolved = await resolveDownload(params.url, {
+  const options = {
     format: params.format,
     quality: params.quality,
     audioFormat: params.audioFormat,
-  });
+  };
 
-  return streamDownload(resolved, request);
+  try {
+    const resolved = await resolveDownload(params.url, options);
+    return await streamDownload(resolved, request);
+  } catch (error) {
+    if (error instanceof VideoError && error.code === 'UPSTREAM_FAILED') {
+      invalidateVideoInfo(params.url);
+      const fresh = await resolveDownload(params.url, { ...options, skipCache: true });
+      return await streamDownload(fresh, request);
+    }
+    throw error;
+  }
 }
 
 function rateLimited(request: NextRequest): boolean {
@@ -75,35 +85,14 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid download request.', code: 'CLAIMS_INVALID' }, { status: 400 });
     }
 
-    // Probe: resolve the stream and report what the download will be, without
-    // transferring it. Lets the UI surface errors before handing the request to
-    // the browser's download manager.
+    // Probe: resolve and verify upstream stream(s) before handing the request to
+    // the browser's download manager, refreshing stale cached CDN links if needed.
     if (request.nextUrl.searchParams.get('probe') === '1') {
-      const resolved = await resolveDownload(claims.url, {
+      const { resolved, size } = await resolveVerifiedDownload(claims.url, {
         format: claims.format,
         quality: claims.quality,
         audioFormat: claims.audioFormat,
       });
-
-      let size: number | undefined;
-      if (resolved.mode === 'proxy') {
-        const head = await fetch(resolved.url, {
-          method: 'GET',
-          headers: { ...resolved.headers, Range: 'bytes=0-1' },
-          cache: 'no-store',
-        });
-        // Drain the 2-byte body to release the socket — cancel() can hang here
-        await head.arrayBuffer().catch(() => undefined);
-        if (!head.ok) {
-          return NextResponse.json(
-            { error: `The source refused the download (HTTP ${head.status}). Fetch the video info again.`, code: 'UPSTREAM_FAILED' },
-            { status: 502 },
-          );
-        }
-        const contentRange = head.headers.get('content-range');
-        const total = contentRange?.split('/')[1];
-        size = total && /^\d+$/.test(total) ? Number(total) : undefined;
-      }
 
       return NextResponse.json({
         success: true,

@@ -9,15 +9,25 @@
  * downloads in production.
  */
 
-const { existsSync, createWriteStream, copyFileSync, statSync, mkdirSync } = require('fs');
+/* eslint-disable @typescript-eslint/no-require-imports */
+const { existsSync, createWriteStream, copyFileSync, statSync, mkdirSync, chmodSync } = require('fs');
 const { mkdir, chmod } = require('fs/promises');
 const { join } = require('path');
 const { pipeline } = require('stream/promises');
 
 const YOUTUBE_DL_DIR = join(__dirname, '..', 'node_modules', 'youtube-dl-exec', 'bin');
-const YOUTUBE_DL_FILE = process.platform === 'linux' ? 'yt-dlp_linux' : 'yt-dlp';
-const YOUTUBE_DL_PATH = join(YOUTUBE_DL_DIR, YOUTUBE_DL_FILE);
-const MAX_BINARY_AGE_MS = 14 * 24 * 60 * 60 * 1000; // 14 days
+const YOUTUBE_DL_LOCAL_FILE =
+  process.platform === 'linux' ? 'yt-dlp_linux' : process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp';
+const YOUTUBE_DL_RELEASE_FILE =
+  process.platform === 'linux'
+    ? process.arch === 'arm64'
+      ? 'yt-dlp_linux_aarch64'
+      : 'yt-dlp_linux'
+    : process.platform === 'win32'
+      ? 'yt-dlp.exe'
+      : 'yt-dlp';
+const YOUTUBE_DL_PATH = join(YOUTUBE_DL_DIR, YOUTUBE_DL_LOCAL_FILE);
+const MAX_BINARY_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 function isFresh(path) {
   try {
@@ -34,8 +44,8 @@ async function ensureYtDlp() {
     return;
   }
 
-  console.log(`[prebuild] Downloading latest ${YOUTUBE_DL_FILE}...`);
-  const releaseUrl = `https://github.com/yt-dlp/yt-dlp/releases/latest/download/${YOUTUBE_DL_FILE}`;
+  console.log(`[prebuild] Downloading latest ${YOUTUBE_DL_RELEASE_FILE}...`);
+  const releaseUrl = `https://github.com/yt-dlp/yt-dlp/releases/latest/download/${YOUTUBE_DL_RELEASE_FILE}`;
 
   try {
     const response = await fetch(releaseUrl);
@@ -45,7 +55,9 @@ async function ensureYtDlp() {
 
     await mkdir(YOUTUBE_DL_DIR, { recursive: true });
     await pipeline(response.body, createWriteStream(YOUTUBE_DL_PATH));
-    await chmod(YOUTUBE_DL_PATH, 0o755);
+    if (process.platform !== 'win32') {
+      await chmod(YOUTUBE_DL_PATH, 0o755);
+    }
     console.log(`[prebuild] Downloaded yt-dlp to ${YOUTUBE_DL_PATH}`);
   } catch (error) {
     if (existsSync(YOUTUBE_DL_PATH)) {
@@ -59,8 +71,9 @@ async function ensureYtDlp() {
 
 function ensureFfmpeg() {
   // Copy the ffmpeg-static binary to a stable path that survives bundling.
-  const ffmpegStaticPath = join(__dirname, '..', 'node_modules', 'ffmpeg-static', 'ffmpeg');
-  const dest = join(__dirname, '..', 'bin', 'ffmpeg');
+  const ffmpegStaticName = process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg';
+  const ffmpegStaticPath = join(__dirname, '..', 'node_modules', 'ffmpeg-static', ffmpegStaticName);
+  const dest = join(__dirname, '..', 'bin', ffmpegStaticName);
 
   if (!existsSync(ffmpegStaticPath)) {
     console.log('[prebuild] ffmpeg-static not found, skipping');
@@ -70,7 +83,9 @@ function ensureFfmpeg() {
   try {
     mkdirSync(join(dest, '..'), { recursive: true });
     copyFileSync(ffmpegStaticPath, dest);
-    chmod(dest, 0o755);
+    if (process.platform !== 'win32') {
+      chmodSync(dest, 0o755);
+    }
     console.log(`[prebuild] Copied ffmpeg to ${dest}`);
   } catch (err) {
     console.log(`[prebuild] Could not copy ffmpeg to ${dest}: ${err.message}`);

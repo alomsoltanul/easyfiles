@@ -16,7 +16,7 @@
 import { spawn } from 'child_process';
 import { Readable } from 'stream';
 import { contentDisposition } from './video-security';
-import { getFfmpegPath, VideoError, type ResolvedDownload } from './video-downloader';
+import { getFfmpegPath, VideoError, waitUntilAvailable, type ResolvedDownload } from './video-downloader';
 
 const CHUNK_SIZE = 10 * 1024 * 1024;
 
@@ -31,15 +31,36 @@ function parseTotal(contentRange: string | null): number | undefined {
   return total && /^\d+$/.test(total) ? Number(total) : undefined;
 }
 
+async function fetchChunkWithRetry(
+  url: string,
+  headers: Record<string, string>,
+  rangeHeader: string,
+): Promise<Response> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const response = await fetch(url, {
+        headers: { ...headers, Range: rangeHeader },
+        cache: 'no-store',
+      });
+      if (response.status < 500 || attempt === 1) {
+        return response;
+      }
+      await response.arrayBuffer().catch(() => undefined);
+    } catch (err) {
+      lastError = err;
+      if (attempt === 1) throw err;
+    }
+  }
+  throw lastError ?? new Error('Chunk fetch failed');
+}
+
 /**
  * Streams `url` by walking it in ranged chunks. Falls back to a single plain
  * response if the server ignores the Range header.
  */
 async function openChunked(url: string, headers: Record<string, string>, start = 0): Promise<ChunkedSource> {
-  const first = await fetch(url, {
-    headers: { ...headers, Range: `bytes=${start}-${start + CHUNK_SIZE - 1}` },
-    cache: 'no-store',
-  });
+  const first = await fetchChunkWithRetry(url, headers, `bytes=${start}-${start + CHUNK_SIZE - 1}`);
 
   if (!first.ok || !first.body) {
     throw new VideoError(
@@ -65,10 +86,7 @@ async function openChunked(url: string, headers: Record<string, string>, start =
             controller.close();
             return;
           }
-          const next = await fetch(url, {
-            headers: { ...headers, Range: `bytes=${position}-${position + CHUNK_SIZE - 1}` },
-            cache: 'no-store',
-          });
+          const next = await fetchChunkWithRetry(url, headers, `bytes=${position}-${position + CHUNK_SIZE - 1}`);
           if (!next.ok || !next.body) {
             if (next.status === 416) {
               controller.close();
@@ -106,6 +124,13 @@ function baseHeaders(resolved: ResolvedDownload): Record<string, string> {
     'Cache-Control': 'no-store',
     'X-Content-Type-Options': 'nosniff',
   };
+}
+
+function ffmpegHeaderArg(headers: Record<string, string>): string {
+  return Object.entries(headers)
+    .filter(([key, value]) => key && value && !/[\r\n]/.test(value))
+    .map(([key, value]) => `${key}: ${value}\r\n`)
+    .join('');
 }
 
 async function proxyResponse(resolved: Extract<ResolvedDownload, { mode: 'proxy' }>, range: string | null): Promise<Response> {
@@ -150,6 +175,7 @@ function ffmpegResponse(
   const stdio: ('ignore' | 'pipe')[] = ['ignore', 'pipe', 'pipe', ...inputs.map(() => 'pipe' as const)];
   const child = spawn(ffmpegPath, args, { stdio });
   let stderrTail = '';
+  const sources: Readable[] = [];
 
   child.stderr?.on('data', (chunk: Buffer) => {
     stderrTail = (stderrTail + chunk.toString()).slice(-2000);
@@ -160,6 +186,7 @@ function ffmpegResponse(
     const target = child.stdio[3 + index] as NodeJS.WritableStream | null;
     if (!target) return;
     const source = Readable.fromWeb(input as Parameters<typeof Readable.fromWeb>[0]);
+    sources.push(source);
     source.on('error', () => child.kill('SIGKILL'));
     target.on('error', () => {
       // ffmpeg closed this input (normal once it has what it needs)
@@ -168,18 +195,29 @@ function ffmpegResponse(
     source.pipe(target);
   });
 
+  const cleanupInputs = () => {
+    for (const source of sources) {
+      if (!source.destroyed) source.destroy();
+    }
+  };
+
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       let closed = false;
       const finish = (error?: Error) => {
         if (closed) return;
         closed = true;
+        cleanupInputs();
         if (error) controller.error(error);
         else controller.close();
       };
 
       child.stdout?.on('data', (chunk: Buffer) => {
+        if (closed) return;
         controller.enqueue(new Uint8Array(chunk));
+        if ((controller.desiredSize ?? 1) <= 0) {
+          child.stdout?.pause();
+        }
       });
       child.on('error', (error) => finish(error as Error));
       child.on('close', (code) => {
@@ -192,7 +230,11 @@ function ffmpegResponse(
         finish();
       });
     },
+    pull() {
+      child.stdout?.resume();
+    },
     cancel() {
+      cleanupInputs();
       child.kill('SIGKILL');
     },
   });
@@ -201,23 +243,48 @@ function ffmpegResponse(
 }
 
 export async function streamDownload(resolved: ResolvedDownload, request: Request): Promise<Response> {
+  await waitUntilAvailable(resolved.availableAt, request.signal);
+  if (request.signal?.aborted) {
+    throw new VideoError('ABORTED', 'Download cancelled.', 499);
+  }
+
   if (resolved.mode === 'proxy') {
     return proxyResponse(resolved, request.headers.get('range'));
   }
 
   if (resolved.mode === 'merge') {
+    const pipeInputs: ReadableStream<Uint8Array>[] = [];
+    const inputArgs: string[] = [];
+
+    if (resolved.videoIsHls) {
+      const hdr = ffmpegHeaderArg(resolved.videoHeaders);
+      if (hdr) inputArgs.push('-headers', hdr);
+      inputArgs.push('-i', resolved.videoUrl);
+    } else {
+      const video = await openChunked(resolved.videoUrl, resolved.videoHeaders);
+      const fd = 3 + pipeInputs.length;
+      pipeInputs.push(video.stream);
+      inputArgs.push('-i', `pipe:${fd}`);
+    }
+
     if (resolved.audioUrl) {
-      const [video, audio] = await Promise.all([
-        openChunked(resolved.videoUrl, resolved.headers),
-        openChunked(resolved.audioUrl, resolved.headers),
-      ]);
+      const audioHeaders = resolved.audioHeaders ?? resolved.videoHeaders;
+      if (resolved.audioIsHls) {
+        const hdr = ffmpegHeaderArg(audioHeaders);
+        if (hdr) inputArgs.push('-headers', hdr);
+        inputArgs.push('-i', resolved.audioUrl);
+      } else {
+        const audio = await openChunked(resolved.audioUrl, audioHeaders);
+        const fd = 3 + pipeInputs.length;
+        pipeInputs.push(audio.stream);
+        inputArgs.push('-i', `pipe:${fd}`);
+      }
 
       const args = [
         '-hide_banner',
         '-loglevel', 'error',
         '-nostdin',
-        '-i', 'pipe:3',
-        '-i', 'pipe:4',
+        ...inputArgs,
         '-map', '0:v:0',
         '-map', '1:a:0',
         '-c:v', resolved.transcodeVideo ? 'libx264' : 'copy',
@@ -230,16 +297,15 @@ export async function streamDownload(resolved: ResolvedDownload, request: Reques
         'pipe:1',
       ];
 
-      return ffmpegResponse(resolved, args, [video.stream, audio.stream], request.signal);
+      return ffmpegResponse(resolved, args, pipeInputs, request.signal);
     }
 
-    // Single input transcode (e.g. converting a VP9/AV1 progressive file to compatible H.264)
-    const video = await openChunked(resolved.videoUrl, resolved.headers);
+    // Single input transcode / remux (e.g. HLS progressive or VP9/AV1 progressive to H.264)
     const args = [
       '-hide_banner',
       '-loglevel', 'error',
       '-nostdin',
-      '-i', 'pipe:3',
+      ...inputArgs,
       '-map', '0:v:0',
       '-map', '0:a:0?',
       '-c:v', resolved.transcodeVideo ? 'libx264' : 'copy',
@@ -251,15 +317,26 @@ export async function streamDownload(resolved: ResolvedDownload, request: Reques
       'pipe:1',
     ];
 
-    return ffmpegResponse(resolved, args, [video.stream], request.signal);
+    return ffmpegResponse(resolved, args, pipeInputs, request.signal);
   }
 
-  const audio = await openChunked(resolved.url, resolved.headers);
+  const pipeInputs: ReadableStream<Uint8Array>[] = [];
+  const inputArgs: string[] = [];
+  if (resolved.isHls) {
+    const hdr = ffmpegHeaderArg(resolved.headers);
+    if (hdr) inputArgs.push('-headers', hdr);
+    inputArgs.push('-i', resolved.url);
+  } else {
+    const audio = await openChunked(resolved.url, resolved.headers);
+    pipeInputs.push(audio.stream);
+    inputArgs.push('-i', 'pipe:3');
+  }
+
   const args = [
     '-hide_banner',
     '-loglevel', 'error',
     '-nostdin',
-    '-i', 'pipe:3',
+    ...inputArgs,
     '-vn',
     '-c:a', 'libmp3lame',
     '-q:a', '2',
@@ -267,5 +344,5 @@ export async function streamDownload(resolved: ResolvedDownload, request: Reques
     'pipe:1',
   ];
 
-  return ffmpegResponse(resolved, args, [audio.stream], request.signal);
+  return ffmpegResponse(resolved, args, pipeInputs, request.signal);
 }

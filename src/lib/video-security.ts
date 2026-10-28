@@ -17,6 +17,9 @@ const ALLOWED_HOSTS = new Set([
   'youtu.be',
   'm.youtube.com',
   'music.youtube.com',
+  'gaming.youtube.com',
+  'youtube-nocookie.com',
+  'www.youtube-nocookie.com',
   'facebook.com',
   'www.facebook.com',
   'web.facebook.com',
@@ -38,6 +41,7 @@ const ALLOWED_HOSTS = new Set([
 const BASE_ALLOWED_DOMAINS = new Set([
   'youtube.com',
   'youtu.be',
+  'youtube-nocookie.com',
   'facebook.com',
   'fb.watch',
   'fb.gg',
@@ -48,7 +52,7 @@ const BASE_ALLOWED_DOMAINS = new Set([
 ]);
 
 // Known safe subdomains
-const KNOWN_SUBDOMAINS = ['www.', 'm.', 'music.', 'mobile.', 'web.'];
+const KNOWN_SUBDOMAINS = ['www.', 'm.', 'music.', 'gaming.', 'mobile.', 'web.'];
 
 /**
  * Validates that a URL is from an allowed video platform.

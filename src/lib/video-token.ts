@@ -9,6 +9,9 @@
  */
 
 import { createHmac, timingSafeEqual, randomBytes } from 'crypto';
+import { existsSync, readFileSync, writeFileSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 import type { Quality } from './video-security';
 
 export interface DownloadClaims {
@@ -24,13 +27,36 @@ const TOKEN_TTL_MS = 15 * 60 * 1000;
 const SECRET_KEY = Symbol.for('convertools.video.tokenSecret');
 
 function getSecret(): string {
-  const configured = process.env.VIDEO_TOKEN_SECRET || process.env.VERCEL_DEPLOYMENT_ID || process.env.VERCEL_URL;
+  const configured =
+    process.env.VIDEO_TOKEN_SECRET ||
+    process.env.AUTH_SECRET ||
+    process.env.NEXTAUTH_SECRET ||
+    process.env.CRON_SECRET ||
+    process.env.VERCEL_DEPLOYMENT_ID ||
+    process.env.VERCEL_URL;
   if (configured) return configured;
 
-  // Local dev: keep one secret per process, surviving hot-reload of this module
+  // Local dev: share one secret across route worker threads and HMR reloads
   const store = globalThis as unknown as Record<symbol, string | undefined>;
-  if (!store[SECRET_KEY]) store[SECRET_KEY] = randomBytes(32).toString('hex');
-  return store[SECRET_KEY] as string;
+  if (store[SECRET_KEY]) return store[SECRET_KEY] as string;
+
+  const secretFile = join(tmpdir(), 'convertools-video-token.secret');
+  try {
+    if (existsSync(secretFile)) {
+      const existing = readFileSync(secretFile, 'utf8').trim();
+      if (existing.length >= 32) {
+        store[SECRET_KEY] = existing;
+        return existing;
+      }
+    }
+    const generated = randomBytes(32).toString('hex');
+    writeFileSync(secretFile, generated, { mode: 0o600 });
+    store[SECRET_KEY] = generated;
+    return generated;
+  } catch {
+    store[SECRET_KEY] = randomBytes(32).toString('hex');
+    return store[SECRET_KEY] as string;
+  }
 }
 
 function b64url(input: Buffer | string): string {

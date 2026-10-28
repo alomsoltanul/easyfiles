@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "node scripts/ensure-yt-dlp.js",
     "dev": "next dev",
     "prebuild": "node scripts/ensure-yt-dlp.js",
     "build": "next build",

@@ -14,7 +14,14 @@ import youtubedl, { create } from 'youtube-dl-exec';
 import { existsSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { isAllowedUrl, detectPlatform, sanitizeFileName, type Platform, type Quality } from './video-security';
+import {
+  isAllowedUrl,
+  detectPlatform,
+  normalizeUrl,
+  sanitizeFileName,
+  type Platform,
+  type Quality,
+} from './video-security';
 
 const IS_VERCEL = process.env.VERCEL === '1';
 const INFO_TIMEOUT = IS_VERCEL ? 45_000 : 60_000;
@@ -29,12 +36,16 @@ let cachedFfmpegPath: string | null | undefined;
 export function getFfmpegPath(): string | undefined {
   if (cachedFfmpegPath !== undefined) return cachedFfmpegPath ?? undefined;
 
+  const ffmpegBin = process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg';
   const candidates = [
     process.env.FFMPEG_PATH,
-    join(process.cwd(), 'bin', 'ffmpeg'),
-    join(process.cwd(), 'node_modules', 'ffmpeg-static', 'ffmpeg'),
+    join(process.cwd(), 'bin', ffmpegBin),
+    join(process.cwd(), 'node_modules', 'ffmpeg-static', ffmpegBin),
     '/var/task/bin/ffmpeg',
     '/var/task/node_modules/ffmpeg-static/ffmpeg',
+    '/opt/homebrew/bin/ffmpeg',
+    '/usr/local/bin/ffmpeg',
+    '/usr/bin/ffmpeg',
   ].filter(Boolean) as string[];
 
   for (const candidate of candidates) {
@@ -62,10 +73,21 @@ export function getFfmpegPath(): string | undefined {
 function getYtDlpBinaryPath(): string | undefined {
   const candidates = [
     process.env.YT_DLP_PATH,
-    join(process.cwd(), 'node_modules', 'youtube-dl-exec', 'bin', 'yt-dlp_linux'),
-    join(process.cwd(), 'node_modules', 'youtube-dl-exec', 'bin', 'yt-dlp'),
-    '/var/task/node_modules/youtube-dl-exec/bin/yt-dlp_linux',
-    '/var/task/node_modules/youtube-dl-exec/bin/yt-dlp',
+    ...(process.platform === 'linux'
+      ? [
+          join(process.cwd(), 'node_modules', 'youtube-dl-exec', 'bin', 'yt-dlp_linux'),
+          '/var/task/node_modules/youtube-dl-exec/bin/yt-dlp_linux',
+        ]
+      : []),
+    ...(process.platform === 'win32'
+      ? [join(process.cwd(), 'node_modules', 'youtube-dl-exec', 'bin', 'yt-dlp.exe')]
+      : [
+          join(process.cwd(), 'node_modules', 'youtube-dl-exec', 'bin', 'yt-dlp'),
+          '/var/task/node_modules/youtube-dl-exec/bin/yt-dlp',
+        ]),
+    '/opt/homebrew/bin/yt-dlp',
+    '/usr/local/bin/yt-dlp',
+    '/usr/bin/yt-dlp',
   ].filter(Boolean) as string[];
 
   for (const candidate of candidates) {
@@ -151,6 +173,11 @@ export interface VideoFormat {
   hasVideo: boolean;
   note: string;
   url: string;
+  isHls?: boolean;
+  httpHeaders?: Record<string, string>;
+  languagePreference?: number;
+  sourcePreference?: number;
+  availableAt?: number;
 }
 
 export interface QualityOption {
@@ -189,20 +216,41 @@ export interface VideoInfo {
 }
 
 export type ResolvedDownload =
-  | { mode: 'proxy'; url: string; fileName: string; mime: string; headers: Record<string, string> }
+  | {
+      mode: 'proxy';
+      url: string;
+      fileName: string;
+      mime: string;
+      headers: Record<string, string>;
+      approxSize?: number;
+      availableAt?: number;
+    }
   | {
       mode: 'merge';
       videoUrl: string;
+      videoHeaders: Record<string, string>;
+      videoIsHls?: boolean;
       /** Separate audio stream; omitted when the video input already carries audio */
       audioUrl?: string;
+      audioHeaders?: Record<string, string>;
+      audioIsHls?: boolean;
       copyAudio: boolean;
       /** Re-encode the video track to H.264 instead of stream-copying it */
       transcodeVideo: boolean;
       fileName: string;
       mime: string;
-      headers: Record<string, string>;
+      approxSize?: number;
+      availableAt?: number;
     }
-  | { mode: 'mp3'; url: string; fileName: string; mime: string; headers: Record<string, string> };
+  | {
+      mode: 'mp3';
+      url: string;
+      headers: Record<string, string>;
+      isHls?: boolean;
+      fileName: string;
+      mime: string;
+      availableAt?: number;
+    };
 
 export class VideoError extends Error {
   code: string;
@@ -223,10 +271,16 @@ function baseFlags(platform: Platform | 'unknown'): Attempt {
     dumpSingleJson: true,
     noWarnings: true,
     noPlaylist: true,
-    callHome: false,
     retries: 2,
     socketTimeout: 15,
+    cacheDir: join(tmpdir(), 'yt-dlp-cache'),
   };
+
+  // Modern YouTube extraction requires a JS runtime to solve EJS/n-challenges.
+  // yt-dlp only auto-enables Deno; explicitly pass the running Node.js binary.
+  if (process.execPath) {
+    flags.jsRuntimes = `node:${process.execPath}`;
+  }
 
   const cookieFile = getCookieFile(platform);
   if (cookieFile) flags.cookies = cookieFile;
@@ -242,18 +296,23 @@ function baseFlags(platform: Platform | 'unknown'): Attempt {
 }
 
 /**
- * YouTube rotates which innertube clients work from datacenter IPs, so each
- * attempt uses a different client set before giving up.
+ * YouTube rotates which Innertube clients require PO tokens or attach pre-roll
+ * ad delays (`available_at`), so prefer `web_embedded,default` (instant, no PO
+ * token, with automatic fallback to `tv_samsung,visionos,web` for non-embeddable
+ * videos) and fall back further if needed.
  */
 function attemptsFor(platform: Platform | 'unknown'): Attempt[] {
   const base = baseFlags(platform);
 
   if (platform === 'youtube') {
     return [
-      { ...base, extractorArgs: 'youtube:player_client=android_creator,android' },
-      { ...base, extractorArgs: 'youtube:player_client=android,mweb' },
-      { ...base, extractorArgs: 'youtube:player_client=web,android_vr' },
-      { ...base, extractorArgs: 'youtube:player_client=ios,mweb' },
+      { ...base, extractorArgs: 'youtube:player_client=web_embedded,default' },
+      { ...base },
+      {
+        ...base,
+        extractorArgs: 'youtube:player_client=tv,tv_downgraded,web_safari,visionos;player_skip=webpage',
+        remoteComponents: 'ejs:github',
+      },
     ];
   }
 
@@ -264,7 +323,12 @@ function attemptsFor(platform: Platform | 'unknown'): Attempt[] {
   return [base, { ...base }];
 }
 
-async function runInfo(url: string, platform: Platform | 'unknown'): Promise<Record<string, unknown>> {
+function extractItem(raw: Record<string, unknown>): Record<string, unknown> {
+  const entries = raw.entries as Record<string, unknown>[] | undefined;
+  return Array.isArray(entries) && entries.length > 0 ? { ...raw, ...entries[0] } : raw;
+}
+
+async function runInfo(url: string, platform: Platform | 'unknown', canMerge: boolean): Promise<Record<string, unknown>> {
   const ytDlp = getYtDlp();
   const attempts = attemptsFor(platform);
   let lastError: unknown;
@@ -273,7 +337,15 @@ async function runInfo(url: string, platform: Platform | 'unknown'): Promise<Rec
     try {
       const result = await ytDlp(url, flags as never, { timeout: INFO_TIMEOUT });
       const info = (typeof result === 'string' ? JSON.parse(result) : result) as Record<string, unknown>;
-      if (info && info.id) return info;
+      if (info && info.id) {
+        const item = extractItem(info);
+        const formats = parseFormats(item.formats, canMerge);
+        if (formats.length > 0 || typeof item.url === 'string' || Boolean(item.is_live)) {
+          return info;
+        }
+        lastError = new VideoError('NO_STREAM', 'No downloadable stream was found for this link.', 404);
+        continue;
+      }
       lastError = new Error('Empty extractor response');
     } catch (error) {
       lastError = error;
@@ -281,8 +353,11 @@ async function runInfo(url: string, platform: Platform | 'unknown'): Promise<Rec
       if (process.env.NODE_ENV !== 'production') {
         console.error('[yt-dlp attempt failed]', text.slice(0, 600));
       }
-      // Not worth retrying with another client — the content itself is gated
-      if (/login required|requires authentication|private|not available in your country|removed|deleted/i.test(text)) {
+      if (platform === 'youtube') {
+        if (/private video|members-only|has been removed|not available in your country/i.test(text)) {
+          break;
+        }
+      } else if (/login required|requires authentication|private|not available in your country|removed|deleted/i.test(text)) {
         break;
       }
     }
@@ -297,6 +372,7 @@ function errorText(error: unknown): string {
 }
 
 function toVideoError(error: unknown, platform: Platform | 'unknown'): VideoError {
+  if (error instanceof VideoError) return error;
   const text = errorText(error);
 
   if (/sign in to confirm|not a bot|cookies/i.test(text) && platform === 'youtube') {
@@ -375,23 +451,50 @@ function cacheSet(url: string, info: VideoInfo): void {
   infoCache.set(url, { info, at: Date.now() });
 }
 
+export function invalidateVideoInfo(url: string): void {
+  const hit = infoCache.get(url);
+  infoCache.delete(url);
+  const normalized = normalizeUrl(url);
+  if (normalized) infoCache.delete(normalized);
+  if (hit) {
+    infoCache.delete(hit.info.webpageUrl);
+    const normalizedWeb = normalizeUrl(hit.info.webpageUrl);
+    if (normalizedWeb) infoCache.delete(normalizedWeb);
+  }
+}
+
 function num(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }
 
-function parseFormats(raw: unknown): VideoFormat[] {
+function parseHttpHeaders(raw: unknown): Record<string, string> | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const headers: Record<string, string> = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof value === 'string' && value.trim().length > 0 && !/[\r\n]/.test(value)) {
+      headers[key] = value;
+    }
+  }
+  return Object.keys(headers).length > 0 ? headers : undefined;
+}
+
+function parseFormats(raw: unknown, allowHlsFallback: boolean): VideoFormat[] {
   if (!Array.isArray(raw)) return [];
 
-  return raw
+  const parsed = raw
     .filter((f) => f && typeof f === 'object')
     .map((f) => f as Record<string, unknown>)
     .filter((f) => typeof f.url === 'string' && f.url.startsWith('http') && !f.has_drm)
     .filter((f) => {
       const protocol = String(f.protocol ?? '');
-      // HLS/DASH manifests can't be proxied as a single file
-      return !protocol.includes('m3u8') && !protocol.includes('dash') && protocol !== 'mhtml';
+      const note = String(f.format_note ?? '');
+      if (note.includes('MISSING POT')) return false;
+      // DASH segment templates and MHTML storyboards can't be streamed directly
+      return !protocol.includes('dash') && protocol !== 'mhtml';
     })
     .map<VideoFormat>((f) => {
+      const protocol = String(f.protocol ?? '');
+      const isHls = protocol.includes('m3u8');
       // Facebook and X often omit codec fields entirely; infer from the other
       // metadata rather than dropping the format as "no video, no audio".
       const hasVideoHints = num(f.height) !== undefined || num(f.width) !== undefined || num(f.fps) !== undefined;
@@ -408,7 +511,7 @@ function parseFormats(raw: unknown): VideoFormat[] {
         height: num(f.height) ?? (Number.isFinite(heightFromNote) ? heightFromNote : undefined) ?? heightFromId,
         width: num(f.width),
         fps: num(f.fps),
-        tbr: num(f.tbr),
+        tbr: num(f.tbr) ?? num(f.abr) ?? num(f.vbr),
         filesize: num(f.filesize) ?? num(f.filesize_approx),
         vcodec,
         acodec,
@@ -416,18 +519,43 @@ function parseFormats(raw: unknown): VideoFormat[] {
         hasAudio: acodec !== 'none' && acodec !== 'null',
         note: String(f.format_note ?? ''),
         url: String(f.url),
+        isHls: isHls || undefined,
+        httpHeaders: parseHttpHeaders(f.http_headers),
+        languagePreference: num(f.language_preference),
+        sourcePreference: num(f.source_preference),
+        availableAt: num(f.available_at),
       };
     });
+
+  const hasDirectVideo = parsed.some((f) => f.hasVideo && !f.isHls);
+  const hasDirectAudio = parsed.some((f) => f.hasAudio && !f.isHls);
+
+  return parsed.filter((f) => {
+    if (!f.isHls) return true;
+    // Keep HLS playlists only when ffmpeg is present and no direct HTTPS stream exists
+    if (!allowHlsFallback) return false;
+    if (f.hasVideo && !hasDirectVideo) return true;
+    if (f.hasAudio && !f.hasVideo && !hasDirectAudio) return true;
+    return false;
+  });
+}
+
+function delayRank(f: VideoFormat): number {
+  return f.availableAt && f.availableAt * 1000 > Date.now() ? 1 : 0;
 }
 
 function progressiveFormats(formats: VideoFormat[]): VideoFormat[] {
   return formats
     .filter((f) => f.hasVideo && f.hasAudio)
     .sort((a, b) => {
+      const hlsRank = (f: VideoFormat) => (f.isHls ? 1 : 0);
+      if (hlsRank(a) !== hlsRank(b)) return hlsRank(a) - hlsRank(b);
       const extRank = (e: string) => (e === 'mp4' ? 0 : 1);
       const rank = extRank(a.ext) - extRank(b.ext);
       if (rank !== 0) return rank;
-      return (b.height ?? 0) - (a.height ?? 0);
+      const heightDiff = (b.height ?? 0) - (a.height ?? 0);
+      if (heightDiff !== 0) return heightDiff;
+      return delayRank(a) - delayRank(b);
     });
 }
 
@@ -437,10 +565,13 @@ function videoOnlyFormats(formats: VideoFormat[]): VideoFormat[] {
     .sort((a, b) => {
       const heightDiff = (b.height ?? 0) - (a.height ?? 0);
       if (heightDiff !== 0) return heightDiff;
+      const hlsRank = (f: VideoFormat) => (f.isHls ? 1 : 0);
+      if (hlsRank(a) !== hlsRank(b)) return hlsRank(a) - hlsRank(b);
       // Prefer H.264 in MP4 for maximum device compatibility
       const codecRank = (f: VideoFormat) => (f.vcodec.startsWith('avc') ? 0 : f.ext === 'mp4' ? 1 : 2);
       const rank = codecRank(a) - codecRank(b);
       if (rank !== 0) return rank;
+      if (delayRank(a) !== delayRank(b)) return delayRank(a) - delayRank(b);
       return (b.tbr ?? 0) - (a.tbr ?? 0);
     });
 }
@@ -449,10 +580,21 @@ function audioOnlyFormats(formats: VideoFormat[]): VideoFormat[] {
   return formats
     .filter((f) => f.hasAudio && !f.hasVideo)
     .sort((a, b) => {
+      // Prefer the original/default language audio over AI auto-dubbed tracks
+      const langDiff = (b.languagePreference ?? 0) - (a.languagePreference ?? 0);
+      if (langDiff !== 0) return langDiff;
+      // Prefer non-DRC audio over dynamic-range-compressed variants
+      const drcRank = (f: VideoFormat) => (f.formatId.endsWith('-drc') ? 1 : 0);
+      if (drcRank(a) !== drcRank(b)) return drcRank(a) - drcRank(b);
+      const hlsRank = (f: VideoFormat) => (f.isHls ? 1 : 0);
+      if (hlsRank(a) !== hlsRank(b)) return hlsRank(a) - hlsRank(b);
       const extRank = (f: VideoFormat) => (f.ext === 'm4a' ? 0 : f.ext === 'mp3' ? 1 : 2);
       const rank = extRank(a) - extRank(b);
       if (rank !== 0) return rank;
-      return (b.tbr ?? 0) - (a.tbr ?? 0);
+      if (delayRank(a) !== delayRank(b)) return delayRank(a) - delayRank(b);
+      const tbrDiff = (b.tbr ?? 0) - (a.tbr ?? 0);
+      if (tbrDiff !== 0) return tbrDiff;
+      return (b.sourcePreference ?? 0) - (a.sourcePreference ?? 0);
     });
 }
 
@@ -498,7 +640,7 @@ interface VideoPlan {
 function videoPlans(formats: VideoFormat[], canMerge: boolean): VideoPlan[] {
   const audio = audioOnlyFormats(formats)[0];
   const plans: VideoPlan[] = progressiveFormats(formats).map((f) => ({
-    kind: 'progressive',
+    kind: f.isHls ? 'merge' : 'progressive',
     video: f,
     resolution: resolutionOf(f),
     compatible: isPlayableEverywhere(f),
@@ -614,22 +756,22 @@ function buildQualities(formats: VideoFormat[], platform: Platform | 'unknown', 
  * Fetches video metadata. Results are cached briefly so a follow-up download
  * reuses the same (IP-locked) CDN URLs resolved by this instance.
  */
-export async function getVideoInfo(url: string): Promise<VideoInfo> {
+export async function getVideoInfo(url: string, opts?: { skipCache?: boolean }): Promise<VideoInfo> {
   if (!isAllowedUrl(url)) {
     throw new VideoError('URL_INVALID', 'Only YouTube, Facebook, Instagram, and X (Twitter) links are supported.', 400);
   }
 
-  const cached = cacheGet(url);
-  if (cached) return cached;
+  if (!opts?.skipCache) {
+    const cached = cacheGet(url);
+    if (cached) return cached;
+  }
 
+  const canMerge = Boolean(getFfmpegPath());
   const platform = detectPlatform(url);
-  const raw = await runInfo(url, platform);
+  const raw = await runInfo(url, platform, canMerge);
+  const item = extractItem(raw);
 
-  // Playlists / multi-item posts: use the first entry
-  const entries = raw.entries as Record<string, unknown>[] | undefined;
-  const item = Array.isArray(entries) && entries.length > 0 ? { ...raw, ...entries[0] } : raw;
-
-  const formats = parseFormats(item.formats);
+  const formats = parseFormats(item.formats, canMerge);
   if (formats.length === 0 && typeof item.url === 'string') {
     formats.push({
       formatId: 'direct',
@@ -645,6 +787,9 @@ export async function getVideoInfo(url: string): Promise<VideoInfo> {
       hasAudio: true,
       note: 'direct',
       url: String(item.url),
+      isHls: String(item.protocol ?? '').includes('m3u8') || undefined,
+      httpHeaders: parseHttpHeaders(item.http_headers),
+      availableAt: num(item.available_at),
     });
   }
 
@@ -652,7 +797,6 @@ export async function getVideoInfo(url: string): Promise<VideoInfo> {
     throw new VideoError('NO_STREAM', 'No downloadable stream was found for this link.', 404);
   }
 
-  const canMerge = Boolean(getFfmpegPath());
   const title = String(item.title ?? 'video')
     .replace(/[\x00-\x1f\x7f-\x9f]/g, '')
     .slice(0, 200);
@@ -673,16 +817,30 @@ export async function getVideoInfo(url: string): Promise<VideoInfo> {
   };
 
   cacheSet(url, info);
-  // Cache under the canonical URL too, so a download request that arrives with
-  // the normalized webpage URL still hits the cache.
+  // Cache under the canonical and normalized URLs too, so a download request
+  // that arrives with webpageUrl still hits the cache.
   if (info.webpageUrl !== url) cacheSet(info.webpageUrl, info);
+  const normalizedWeb = normalizeUrl(info.webpageUrl);
+  if (normalizedWeb && normalizedWeb !== url && normalizedWeb !== info.webpageUrl) {
+    cacheSet(normalizedWeb, info);
+  }
 
   return info;
 }
 
 // ===== Download resolution =====
 
-function upstreamHeaders(platform: Platform | 'unknown'): Record<string, string> {
+function setHeaderCaseInsensitive(target: Record<string, string>, key: string, value: string): void {
+  const lower = key.toLowerCase();
+  for (const existing of Object.keys(target)) {
+    if (existing.toLowerCase() === lower && existing !== key) {
+      delete target[existing];
+    }
+  }
+  target[key] = value;
+}
+
+function upstreamHeaders(platform: Platform | 'unknown', formatHeaders?: Record<string, string>): Record<string, string> {
   const headers: Record<string, string> = {
     'User-Agent': BROWSER_UA,
     Accept: '*/*',
@@ -698,6 +856,14 @@ function upstreamHeaders(platform: Platform | 'unknown'): Record<string, string>
     headers.Referer = 'https://x.com/';
   }
 
+  // Per-format headers from yt-dlp (crucial for YouTube, where googlevideo.com
+  // validates that User-Agent matches the signed c= Innertube client).
+  if (formatHeaders) {
+    for (const [key, value] of Object.entries(formatHeaders)) {
+      setHeaderCaseInsensitive(headers, key, value);
+    }
+  }
+
   return headers;
 }
 
@@ -705,11 +871,11 @@ export interface ResolveOptions {
   format: 'video' | 'audio';
   quality?: Quality;
   audioFormat?: 'original' | 'mp3';
+  skipCache?: boolean;
 }
 
 export async function resolveDownload(url: string, options: ResolveOptions): Promise<ResolvedDownload> {
-  const info = await getVideoInfo(url);
-  const headers = upstreamHeaders(info.platform);
+  const info = await getVideoInfo(url, { skipCache: options.skipCache });
   const baseName = sanitizeFileName(info.title || 'download');
 
   if (options.format === 'audio') {
@@ -719,9 +885,10 @@ export async function resolveDownload(url: string, options: ResolveOptions): Pro
       throw new VideoError('NO_STREAM', 'No audio stream is available for this video.', 404);
     }
 
-    // Platforms that only expose muxed files (Facebook, X) need ffmpeg to strip
-    // the video track — handing back the muxed file as ".m4a" would be a lie.
-    const mustTranscode = !audioOnly;
+    const headers = upstreamHeaders(info.platform, audio.httpHeaders);
+    // Platforms that only expose muxed files (Facebook, X) or HLS playlists need
+    // ffmpeg to extract/mux the audio track.
+    const mustTranscode = !audioOnly || Boolean(audio.isHls);
 
     if (options.audioFormat === 'mp3' || mustTranscode) {
       if (!getFfmpegPath()) {
@@ -731,12 +898,28 @@ export async function resolveDownload(url: string, options: ResolveOptions): Pro
           503,
         );
       }
-      return { mode: 'mp3', url: audio.url, fileName: `${baseName}.mp3`, mime: 'audio/mpeg', headers };
+      return {
+        mode: 'mp3',
+        url: audio.url,
+        headers,
+        isHls: audio.isHls,
+        fileName: `${baseName}.mp3`,
+        mime: 'audio/mpeg',
+        availableAt: audio.availableAt,
+      };
     }
 
     const ext = audio.ext === 'webm' || audio.ext === 'opus' ? 'webm' : audio.ext === 'mp3' ? 'mp3' : 'm4a';
     const mime = ext === 'webm' ? 'audio/webm' : ext === 'mp3' ? 'audio/mpeg' : 'audio/mp4';
-    return { mode: 'proxy', url: audio.url, fileName: `${baseName}.${ext}`, mime, headers };
+    return {
+      mode: 'proxy',
+      url: audio.url,
+      fileName: `${baseName}.${ext}`,
+      mime,
+      headers,
+      approxSize: audio.filesize,
+      availableAt: audio.availableAt,
+    };
   }
 
   const canMerge = Boolean(getFfmpegPath());
@@ -750,18 +933,25 @@ export async function resolveDownload(url: string, options: ResolveOptions): Pro
   }
 
   const suffix = plan.resolution ? `-${plan.resolution}p` : '';
+  const videoHeaders = upstreamHeaders(info.platform, plan.video.httpHeaders);
 
-  if (plan.kind === 'merge' || plan.transcode) {
+  if (plan.kind === 'merge' || plan.transcode || plan.video.isHls) {
     const audio = plan.audio;
+    const availableAt = Math.max(plan.video.availableAt ?? 0, audio?.availableAt ?? 0) || undefined;
     return {
       mode: 'merge',
       videoUrl: plan.video.url,
+      videoHeaders,
+      videoIsHls: plan.video.isHls,
       audioUrl: audio?.url,
-      copyAudio: audio ? audio.acodec.startsWith('mp4a') || audio.ext === 'm4a' : true,
+      audioHeaders: audio ? upstreamHeaders(info.platform, audio.httpHeaders) : undefined,
+      audioIsHls: audio?.isHls,
+      copyAudio: audio ? !audio.isHls && (audio.acodec.startsWith('mp4a') || audio.ext === 'm4a') : !plan.video.isHls,
       transcodeVideo: plan.transcode,
       fileName: `${baseName}${suffix}.mp4`,
       mime: 'video/mp4',
-      headers,
+      approxSize: plan.transcode ? undefined : plan.approxSize,
+      availableAt,
     };
   }
 
@@ -771,6 +961,121 @@ export async function resolveDownload(url: string, options: ResolveOptions): Pro
     url: plan.video.url,
     fileName: `${baseName}${suffix}.${ext}`,
     mime: ext === 'webm' ? 'video/webm' : 'video/mp4',
-    headers,
+    headers: videoHeaders,
+    approxSize: plan.approxSize,
+    availableAt: plan.video.availableAt,
   };
+}
+
+/**
+ * Some YouTube Innertube clients (e.g. tv_samsung) return an `available_at`
+ * Unix timestamp 5s in the future when YouTube attaches a skippable pre-roll
+ * ad; requesting bytes earlier returns HTTP 403 from googlevideo.com.
+ */
+export async function waitUntilAvailable(availableAt?: number, signal?: AbortSignal): Promise<void> {
+  if (!availableAt) return;
+  const waitMs = Math.ceil(availableAt * 1000 - Date.now() + 300);
+  if (waitMs <= 0 || waitMs > 25_000) return;
+
+  await new Promise<void>((resolve) => {
+    if (signal?.aborted) {
+      resolve();
+      return;
+    }
+    const timer = setTimeout(resolve, waitMs);
+    signal?.addEventListener(
+      'abort',
+      () => {
+        clearTimeout(timer);
+        resolve();
+      },
+      { once: true },
+    );
+  });
+}
+
+async function probeRange(url: string, headers: Record<string, string>): Promise<{ ok: boolean; status: number; size?: number }> {
+  try {
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: { ...headers, Range: 'bytes=0-1' },
+      cache: 'no-store',
+    });
+    // Drain tiny body to release socket cleanly
+    await res.arrayBuffer().catch(() => undefined);
+    if (!res.ok) return { ok: false, status: res.status };
+    const contentRange = res.headers.get('content-range');
+    const total = contentRange?.split('/')[1];
+    const size =
+      total && /^\d+$/.test(total)
+        ? Number(total)
+        : res.status === 200
+          ? Number(res.headers.get('content-length')) || undefined
+          : undefined;
+    return { ok: true, status: res.status, size };
+  } catch {
+    return { ok: false, status: 0 };
+  }
+}
+
+async function verifyResolvedStreams(resolved: ResolvedDownload): Promise<{ ok: boolean; status: number; size?: number }> {
+  await waitUntilAvailable(resolved.availableAt);
+
+  if (resolved.mode === 'proxy') {
+    const res = await probeRange(resolved.url, resolved.headers);
+    return { ok: res.ok, status: res.status, size: res.size ?? resolved.approxSize };
+  }
+
+  if (resolved.mode === 'mp3') {
+    if (resolved.isHls) return { ok: true, status: 200 };
+    const res = await probeRange(resolved.url, resolved.headers);
+    return { ok: res.ok, status: res.status };
+  }
+
+  const checks = await Promise.all([
+    resolved.videoIsHls
+      ? Promise.resolve({ ok: true, status: 200, size: undefined })
+      : probeRange(resolved.videoUrl, resolved.videoHeaders),
+    resolved.audioUrl && !resolved.audioIsHls
+      ? probeRange(resolved.audioUrl, resolved.audioHeaders ?? resolved.videoHeaders)
+      : Promise.resolve({ ok: true, status: 200, size: undefined }),
+  ]);
+
+  const failed = checks.find((c) => !c.ok);
+  if (failed) return { ok: false, status: failed.status };
+
+  const size =
+    checks[0].size && checks[1].size ? checks[0].size + checks[1].size : checks[0].size ?? resolved.approxSize;
+  return { ok: true, status: 200, size };
+}
+
+/**
+ * Resolves and verifies upstream stream reachability. If cached CDN links have
+ * expired or been rejected (e.g. HTTP 403), invalidates the cache and refreshes
+ * once before failing.
+ */
+export async function resolveVerifiedDownload(
+  url: string,
+  options: ResolveOptions,
+): Promise<{ resolved: ResolvedDownload; size?: number }> {
+  let resolved = await resolveDownload(url, options);
+  let check = await verifyResolvedStreams(resolved);
+
+  if (!check.ok && !options.skipCache) {
+    invalidateVideoInfo(url);
+    resolved = await resolveDownload(url, { ...options, skipCache: true });
+    check = await verifyResolvedStreams(resolved);
+  }
+
+  if (!check.ok) {
+    throw new VideoError(
+      'UPSTREAM_FAILED',
+      check.status
+        ? `The source refused the download (HTTP ${check.status}). Fetch the video info again.`
+        : 'Could not reach the upstream media stream. Please try again.',
+      502,
+    );
+  }
+
+  return { resolved, size: check.size };
 }
