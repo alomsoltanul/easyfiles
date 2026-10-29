@@ -815,132 +815,330 @@ function extractYouTubeVideoId(inputUrl: string): string | null {
   }
 }
 
-async function fetchYouTubePipedFallback(url: string, canMerge: boolean): Promise<VideoInfo | null> {
-  const videoId = extractYouTubeVideoId(url);
-  if (!videoId) return null;
+const VERCEL_MAX_PACED_STREAM_BYTES = 50 * 1024 * 1024;
 
+function toInvidiousProxyUrl(rawUrl: string, instanceOrigin: string): string {
+  try {
+    const parsed = new URL(rawUrl);
+    if (parsed.hostname.endsWith('.googlevideo.com')) {
+      return `${instanceOrigin}${parsed.pathname}${parsed.search}&host=${encodeURIComponent(parsed.hostname)}`;
+    }
+    return rawUrl;
+  } catch {
+    return rawUrl;
+  }
+}
+
+function parseDimensions(size: unknown, resolution: unknown): { width?: number; height?: number } {
+  if (typeof size === 'string') {
+    const m = size.match(/^(\d+)x(\d+)$/i);
+    if (m) return { width: Number(m[1]), height: Number(m[2]) };
+  }
+  const h = parseInt(String(resolution ?? ''), 10);
+  return Number.isFinite(h) && h > 0 ? { height: h } : {};
+}
+
+function parseLanguagePreferenceFromUrl(rawUrl: string): number {
+  try {
+    const xtags = (new URL(rawUrl).searchParams.get('xtags') ?? '').toLowerCase();
+    if (xtags.includes('original')) return 10;
+    if (xtags.includes('dubbed')) return -5;
+    return 0;
+  } catch {
+    return 0;
+  }
+}
+
+async function fetchJsonWithRetries(apiUrl: string, maxAttempts: number, timeoutMs: number): Promise<Record<string, unknown> | null> {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      const res = await fetch(apiUrl, {
+        headers: { 'User-Agent': BROWSER_UA, Accept: 'application/json' },
+        cache: 'no-store',
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      if (res.ok) {
+        return (await res.json()) as Record<string, unknown>;
+      }
+      await res.arrayBuffer().catch(() => undefined);
+      if (res.status < 500 && res.status !== 429) return null;
+    } catch {
+      if (attempt === maxAttempts - 1) return null;
+    }
+    if (attempt < maxAttempts - 1) {
+      await new Promise((r) => setTimeout(r, 350 * (attempt + 1)));
+    }
+  }
+  return null;
+}
+
+async function fetchYouTubeInvidiousFallback(videoId: string, canMerge: boolean): Promise<VideoInfo | null> {
+  const configured =
+    process.env.INVIDIOUS_API_URLS?.split(',')
+      .map((s) => s.trim())
+      .filter(Boolean) ?? [];
+  const instances = configured.length > 0 ? configured : ['https://yt.chocolatemoo53.com'];
+
+  for (const instance of instances) {
+    const origin = instance.replace(/\/+$/, '');
+    const data = await fetchJsonWithRetries(`${origin}/api/v1/videos/${videoId}`, 2, 12_000);
+    if (!data) continue;
+
+    const allFormats: VideoFormat[] = [];
+
+    if (Array.isArray(data.formatStreams)) {
+      for (const raw of data.formatStreams) {
+        if (!raw || typeof raw !== 'object') continue;
+        const s = raw as Record<string, unknown>;
+        if (typeof s.url !== 'string' || !s.url.startsWith('http')) continue;
+        const typeStr = String(s.type ?? 'video/mp4').toLowerCase();
+        const ext = typeStr.includes('webm') ? 'webm' : 'mp4';
+        const dims = parseDimensions(s.size, s.resolution);
+        const proxiedUrl = toInvidiousProxyUrl(s.url, origin);
+        const rawClen = Number(s.clen);
+
+        allFormats.push({
+          formatId: String(s.itag ?? s.resolution ?? 'video'),
+          ext,
+          height: dims.height,
+          width: dims.width,
+          fps: num(s.fps),
+          filesize: (Number.isFinite(rawClen) && rawClen > 0 ? rawClen : undefined) ?? parseClenFromUrl(s.url),
+          vcodec: typeStr.includes('vp9') || typeStr.includes('vp09') ? 'vp9' : 'avc1',
+          acodec: ext === 'webm' ? 'opus' : 'mp4a',
+          hasVideo: true,
+          hasAudio: true,
+          note: String(s.resolution ?? ''),
+          url: proxiedUrl,
+        });
+      }
+    }
+
+    if (Array.isArray(data.adaptiveFormats)) {
+      for (const raw of data.adaptiveFormats) {
+        if (!raw || typeof raw !== 'object') continue;
+        const s = raw as Record<string, unknown>;
+        if (typeof s.url !== 'string' || !s.url.startsWith('http')) continue;
+        const typeStr = String(s.type ?? '').toLowerCase();
+        const encoding = String(s.encoding ?? '').toLowerCase();
+        const isAudio = typeStr.startsWith('audio/');
+        const isVideo = typeStr.startsWith('video/') || (!isAudio && Boolean(s.resolution || s.size));
+        if (!isAudio && !isVideo) continue;
+
+        const proxiedUrl = toInvidiousProxyUrl(s.url, origin);
+        const rawClen = Number(s.clen);
+        const rawBitrate = Number(s.bitrate);
+        const filesize = (Number.isFinite(rawClen) && rawClen > 0 ? rawClen : undefined) ?? parseClenFromUrl(s.url);
+        const tbr = Number.isFinite(rawBitrate) && rawBitrate > 0 ? rawBitrate / 1000 : undefined;
+
+        if (isAudio) {
+          const ext = typeStr.includes('webm') || typeStr.includes('opus') ? 'webm' : typeStr.includes('mpeg') ? 'mp3' : 'm4a';
+          const acodec = typeStr.includes('mp4a') || encoding === 'aac' ? 'mp4a' : 'opus';
+          allFormats.push({
+            formatId: String(s.itag ?? 'audio'),
+            ext,
+            tbr,
+            filesize,
+            vcodec: 'none',
+            acodec,
+            hasVideo: false,
+            hasAudio: true,
+            note: String(s.audioQuality ?? 'audio'),
+            url: proxiedUrl,
+            languagePreference: parseLanguagePreferenceFromUrl(s.url),
+          });
+        } else {
+          const dims = parseDimensions(s.size, s.resolution);
+          const ext = typeStr.includes('webm') || String(s.container ?? '').toLowerCase() === 'webm' ? 'webm' : 'mp4';
+          const vcodec =
+            typeStr.includes('avc1') || encoding === 'h264'
+              ? 'avc1'
+              : typeStr.includes('av01') || encoding.startsWith('av01')
+                ? 'av01'
+                : typeStr.includes('vp9') || typeStr.includes('vp09') || encoding === 'vp9'
+                  ? 'vp9'
+                  : ext === 'webm'
+                    ? 'vp9'
+                    : 'unknown';
+          allFormats.push({
+            formatId: String(s.itag ?? s.resolution ?? 'video'),
+            ext,
+            height: dims.height,
+            width: dims.width,
+            fps: num(s.fps),
+            tbr,
+            filesize,
+            vcodec,
+            acodec: 'none',
+            hasVideo: true,
+            hasAudio: false,
+            note: String(s.resolution ?? ''),
+            url: proxiedUrl,
+          });
+        }
+      }
+    }
+
+    // On Vercel serverless, cap proxy-paced streams so downloads finish well inside maxDuration (300s).
+    const hasUnderCapVideo = allFormats.some(
+      (f) => f.hasVideo && (!f.filesize || f.filesize <= VERCEL_MAX_PACED_STREAM_BYTES),
+    );
+    const formats =
+      IS_VERCEL && hasUnderCapVideo
+        ? allFormats.filter((f) => !f.hasVideo || !f.filesize || f.filesize <= VERCEL_MAX_PACED_STREAM_BYTES)
+        : allFormats;
+
+    const qualities = buildQualities(formats, 'youtube', canMerge);
+    if (formats.length === 0 || qualities.length === 0) continue;
+
+    const title = String(data.title ?? 'video')
+      .replace(/[\x00-\x1f\x7f-\x9f]/g, '')
+      .slice(0, 200);
+
+    return {
+      id: videoId,
+      title,
+      thumbnail: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+      duration: num(data.lengthSeconds) ?? 0,
+      uploader: String(data.author ?? 'Unknown').slice(0, 100),
+      webpageUrl: `https://www.youtube.com/watch?v=${videoId}`,
+      platform: 'youtube',
+      isLive: Boolean(data.liveNow),
+      formats,
+      qualities,
+      hasAudioOnly: audioOnlyFormats(formats).length > 0,
+      canConvertMp3: canMerge,
+    };
+  }
+
+  return null;
+}
+
+async function fetchYouTubePipedFallback(videoId: string, canMerge: boolean): Promise<VideoInfo | null> {
   const configured =
     process.env.PIPED_API_URLS?.split(',')
       .map((s) => s.trim())
       .filter(Boolean) ?? [];
-  const instances = configured.length > 0 ? configured : ['https://api.piped.private.coffee', 'https://pipedapi.kavin.rocks'];
+  const instances = configured.length > 0 ? configured : ['https://api.piped.private.coffee'];
 
   for (const instance of instances) {
-    try {
-      const apiUrl = `${instance.replace(/\/+$/, '')}/streams/${videoId}`;
-      const res = await fetch(apiUrl, {
-        headers: { 'User-Agent': BROWSER_UA, Accept: 'application/json' },
-        cache: 'no-store',
-        signal: AbortSignal.timeout(15_000),
-      });
-      if (!res.ok) continue;
+    const apiUrl = `${instance.replace(/\/+$/, '')}/streams/${videoId}`;
+    const data = await fetchJsonWithRetries(apiUrl, 3, 15_000);
+    if (!data) continue;
 
-      const data = (await res.json()) as Record<string, unknown>;
-      const formats: VideoFormat[] = [];
+    const formats: VideoFormat[] = [];
 
-      if (Array.isArray(data.videoStreams)) {
-        for (const raw of data.videoStreams) {
-          if (!raw || typeof raw !== 'object') continue;
-          const s = raw as Record<string, unknown>;
-          if (typeof s.url !== 'string' || !s.url.startsWith('http')) continue;
-          const videoOnly = Boolean(s.videoOnly);
-          const mime = String(s.mimeType ?? 'video/mp4').toLowerCase();
-          const ext = mime.includes('webm') ? 'webm' : 'mp4';
-          const heightFromQuality = parseInt(String(s.quality ?? ''), 10);
-          const rawHeight = num(s.height);
-          const rawWidth = num(s.width);
-          const rawFps = num(s.fps);
-          const rawBitrate = num(s.bitrate);
-          const rawLen = num(s.contentLength);
+    if (Array.isArray(data.videoStreams)) {
+      for (const raw of data.videoStreams) {
+        if (!raw || typeof raw !== 'object') continue;
+        const s = raw as Record<string, unknown>;
+        if (typeof s.url !== 'string' || !s.url.startsWith('http')) continue;
+        const videoOnly = Boolean(s.videoOnly);
+        const mime = String(s.mimeType ?? 'video/mp4').toLowerCase();
+        const ext = mime.includes('webm') ? 'webm' : 'mp4';
+        const heightFromQuality = parseInt(String(s.quality ?? ''), 10);
+        const rawHeight = num(s.height);
+        const rawWidth = num(s.width);
+        const rawFps = num(s.fps);
+        const rawBitrate = num(s.bitrate);
+        const rawLen = num(s.contentLength);
 
-          formats.push({
-            formatId: String(s.itag ?? s.quality ?? 'video'),
-            ext,
-            height:
-              (rawHeight && rawHeight > 0 ? rawHeight : undefined) ??
-              (Number.isFinite(heightFromQuality) ? heightFromQuality : undefined),
-            width: rawWidth && rawWidth > 0 ? rawWidth : undefined,
-            fps: rawFps && rawFps > 0 ? rawFps : undefined,
-            tbr: rawBitrate && rawBitrate > 0 ? rawBitrate / 1000 : undefined,
-            filesize: (rawLen && rawLen > 0 ? rawLen : undefined) ?? parseClenFromUrl(s.url),
-            vcodec: typeof s.codec === 'string' && s.codec ? s.codec : ext === 'mp4' ? 'avc1' : 'vp9',
-            acodec: videoOnly ? 'none' : 'mp4a',
-            hasVideo: true,
-            hasAudio: !videoOnly,
-            note: String(s.quality ?? ''),
-            url: s.url,
-          });
-        }
-      }
-
-      if (Array.isArray(data.audioStreams)) {
-        for (const raw of data.audioStreams) {
-          if (!raw || typeof raw !== 'object') continue;
-          const s = raw as Record<string, unknown>;
-          if (typeof s.url !== 'string' || !s.url.startsWith('http')) continue;
-          const mime = String(s.mimeType ?? 'audio/mp4').toLowerCase();
-          const ext = mime.includes('webm') || mime.includes('opus') ? 'webm' : mime.includes('mpeg') ? 'mp3' : 'm4a';
-          const rawBitrate = num(s.bitrate);
-          const rawLen = num(s.contentLength);
-          const trackType = String(s.audioTrackType ?? '').toUpperCase();
-          const languagePreference = trackType.includes('ORIGINAL') ? 10 : trackType.includes('DUBBED') ? -5 : 0;
-
-          formats.push({
-            formatId: String(s.itag ?? s.quality ?? 'audio'),
-            ext,
-            tbr: rawBitrate && rawBitrate > 0 ? rawBitrate / 1000 : undefined,
-            filesize: (rawLen && rawLen > 0 ? rawLen : undefined) ?? parseClenFromUrl(s.url),
-            vcodec: 'none',
-            acodec: typeof s.codec === 'string' && s.codec ? s.codec : ext === 'm4a' ? 'mp4a' : 'opus',
-            hasVideo: false,
-            hasAudio: true,
-            note: String(s.quality ?? 'audio'),
-            url: s.url,
-            languagePreference,
-          });
-        }
-      }
-
-      if (formats.length === 0 && canMerge && typeof data.hls === 'string' && data.hls.startsWith('http')) {
         formats.push({
-          formatId: 'hls',
-          ext: 'mp4',
-          vcodec: 'avc1',
-          acodec: 'mp4a',
+          formatId: String(s.itag ?? s.quality ?? 'video'),
+          ext,
+          height:
+            (rawHeight && rawHeight > 0 ? rawHeight : undefined) ??
+            (Number.isFinite(heightFromQuality) ? heightFromQuality : undefined),
+          width: rawWidth && rawWidth > 0 ? rawWidth : undefined,
+          fps: rawFps && rawFps > 0 ? rawFps : undefined,
+          tbr: rawBitrate && rawBitrate > 0 ? rawBitrate / 1000 : undefined,
+          filesize: (rawLen && rawLen > 0 ? rawLen : undefined) ?? parseClenFromUrl(s.url),
+          vcodec: typeof s.codec === 'string' && s.codec ? s.codec : ext === 'mp4' ? 'avc1' : 'vp9',
+          acodec: videoOnly ? 'none' : 'mp4a',
           hasVideo: true,
-          hasAudio: true,
-          note: 'hls',
-          url: data.hls,
-          isHls: true,
+          hasAudio: !videoOnly,
+          note: String(s.quality ?? ''),
+          url: s.url,
         });
       }
-
-      if (formats.length === 0) continue;
-
-      const title = String(data.title ?? 'video')
-        .replace(/[\x00-\x1f\x7f-\x9f]/g, '')
-        .slice(0, 200);
-
-      return {
-        id: videoId,
-        title,
-        thumbnail: typeof data.thumbnailUrl === 'string' ? data.thumbnailUrl : '',
-        duration: num(data.duration) ?? 0,
-        uploader: String(data.uploader ?? 'Unknown').slice(0, 100),
-        webpageUrl: `https://www.youtube.com/watch?v=${videoId}`,
-        platform: 'youtube',
-        isLive: Boolean(data.livestream),
-        formats,
-        qualities: buildQualities(formats, 'youtube', canMerge),
-        hasAudioOnly: audioOnlyFormats(formats).length > 0,
-        canConvertMp3: canMerge,
-      };
-    } catch {
-      continue;
     }
+
+    if (Array.isArray(data.audioStreams)) {
+      for (const raw of data.audioStreams) {
+        if (!raw || typeof raw !== 'object') continue;
+        const s = raw as Record<string, unknown>;
+        if (typeof s.url !== 'string' || !s.url.startsWith('http')) continue;
+        const mime = String(s.mimeType ?? 'audio/mp4').toLowerCase();
+        const ext = mime.includes('webm') || mime.includes('opus') ? 'webm' : mime.includes('mpeg') ? 'mp3' : 'm4a';
+        const rawBitrate = num(s.bitrate);
+        const rawLen = num(s.contentLength);
+        const trackType = String(s.audioTrackType ?? '').toUpperCase();
+        const languagePreference = trackType.includes('ORIGINAL') ? 10 : trackType.includes('DUBBED') ? -5 : 0;
+
+        formats.push({
+          formatId: String(s.itag ?? s.quality ?? 'audio'),
+          ext,
+          tbr: rawBitrate && rawBitrate > 0 ? rawBitrate / 1000 : undefined,
+          filesize: (rawLen && rawLen > 0 ? rawLen : undefined) ?? parseClenFromUrl(s.url),
+          vcodec: 'none',
+          acodec: typeof s.codec === 'string' && s.codec ? s.codec : ext === 'm4a' ? 'mp4a' : 'opus',
+          hasVideo: false,
+          hasAudio: true,
+          note: String(s.quality ?? 'audio'),
+          url: s.url,
+          languagePreference,
+        });
+      }
+    }
+
+    if (formats.length === 0 && canMerge && typeof data.hls === 'string' && data.hls.startsWith('http')) {
+      formats.push({
+        formatId: 'hls',
+        ext: 'mp4',
+        vcodec: 'avc1',
+        acodec: 'mp4a',
+        hasVideo: true,
+        hasAudio: true,
+        note: 'hls',
+        url: data.hls,
+        isHls: true,
+      });
+    }
+
+    const qualities = buildQualities(formats, 'youtube', canMerge);
+    if (formats.length === 0 || qualities.length === 0) continue;
+
+    const title = String(data.title ?? 'video')
+      .replace(/[\x00-\x1f\x7f-\x9f]/g, '')
+      .slice(0, 200);
+
+    return {
+      id: videoId,
+      title,
+      thumbnail: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+      duration: num(data.duration) ?? 0,
+      uploader: String(data.uploader ?? 'Unknown').slice(0, 100),
+      webpageUrl: `https://www.youtube.com/watch?v=${videoId}`,
+      platform: 'youtube',
+      isLive: Boolean(data.livestream),
+      formats,
+      qualities,
+      hasAudioOnly: audioOnlyFormats(formats).length > 0,
+      canConvertMp3: canMerge,
+    };
   }
 
   return null;
+}
+
+async function fetchYouTubeCloudFallback(url: string, canMerge: boolean): Promise<VideoInfo | null> {
+  const videoId = extractYouTubeVideoId(url);
+  if (!videoId) return null;
+
+  return (
+    (await fetchYouTubeInvidiousFallback(videoId, canMerge)) ??
+    (await fetchYouTubePipedFallback(videoId, canMerge))
+  );
 }
 
 function storeCachedInfo(url: string, info: VideoInfo): void {
@@ -979,7 +1177,7 @@ export async function getVideoInfo(url: string, opts?: { skipCache?: boolean }):
       error instanceof VideoError &&
       (error.code === 'BOT_CHECK' || error.code === 'EXTRACT_FAILED' || error.code === 'NO_STREAM')
     ) {
-      const fallback = await fetchYouTubePipedFallback(url, canMerge);
+      const fallback = await fetchYouTubeCloudFallback(url, canMerge);
       if (fallback) {
         storeCachedInfo(url, fallback);
         return fallback;

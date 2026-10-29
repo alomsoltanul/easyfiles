@@ -26,6 +26,10 @@ import {
 } from './video-downloader';
 
 const CHUNK_SIZE = 10 * 1024 * 1024;
+const INVIDIOUS_CHUNK_SIZE = 2 * 1024 * 1024;
+const PIPED_CHUNK_SIZE = 512 * 1024;
+const PACED_INITIAL_SIZE = 64 * 1024;
+const DEFAULT_PACED_CONCURRENCY = 4;
 
 interface ChunkedSource {
   stream: ReadableStream<Uint8Array>;
@@ -33,41 +37,136 @@ interface ChunkedSource {
   contentType?: string;
 }
 
+interface StreamProfile {
+  paced: boolean;
+  chunkSize: number;
+  concurrency: number;
+}
+
 function parseRangeEnd(contentRange: string | null): number | undefined {
   const match = contentRange?.match(/^bytes\s+\d+-(\d+)\//i);
   return match ? Number(match[1]) : undefined;
+}
+
+/**
+ * Classifies upstream stream URLs so paced proxies (Invidious `/videoplayback`
+ * or PipedProxy / mobile `cps=` streams without a solved `n` parameter) use
+ * bounded concurrent range slices while direct CDNs use 10 MB sequential ranges.
+ */
+function getStreamProfile(url: string): StreamProfile {
+  try {
+    const parsed = new URL(url);
+    if (parsed.hostname.includes('piped')) {
+      return { paced: true, chunkSize: PIPED_CHUNK_SIZE, concurrency: DEFAULT_PACED_CONCURRENCY };
+    }
+    if (parsed.pathname === '/videoplayback' && parsed.searchParams.has('host')) {
+      return { paced: true, chunkSize: INVIDIOUS_CHUNK_SIZE, concurrency: DEFAULT_PACED_CONCURRENCY };
+    }
+    if (parsed.searchParams.get('c') === 'ANDROID' || parsed.searchParams.has('cps')) {
+      if (!parsed.searchParams.has('n') && !parsed.searchParams.has('pot')) {
+        return { paced: true, chunkSize: PIPED_CHUNK_SIZE, concurrency: DEFAULT_PACED_CONCURRENCY };
+      }
+    }
+    return { paced: false, chunkSize: CHUNK_SIZE, concurrency: 1 };
+  } catch {
+    return { paced: false, chunkSize: CHUNK_SIZE, concurrency: 1 };
+  }
+}
+
+function sameHostname(urlA: string, urlB: string): boolean {
+  try {
+    return new URL(urlA).hostname.toLowerCase() === new URL(urlB).hostname.toLowerCase();
+  } catch {
+    return false;
+  }
 }
 
 async function fetchChunkWithRetry(
   url: string,
   headers: Record<string, string>,
   rangeHeader: string,
+  signal?: AbortSignal,
+  maxAttempts = 4,
 ): Promise<Response> {
   let lastError: unknown;
-  for (let attempt = 0; attempt < 2; attempt++) {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
       const response = await fetch(url, {
         headers: { ...headers, Range: rangeHeader },
         cache: 'no-store',
+        signal,
       });
-      if (response.status < 500 || attempt === 1) {
+      if ((response.status < 500 && response.status !== 429) || attempt === maxAttempts - 1) {
         return response;
       }
       await response.arrayBuffer().catch(() => undefined);
     } catch (err) {
+      if (signal?.aborted) throw err;
       lastError = err;
-      if (attempt === 1) throw err;
+      if (attempt === maxAttempts - 1) throw err;
     }
+    await new Promise((r) => setTimeout(r, 250 * (attempt + 1)));
   }
   throw lastError ?? new Error('Chunk fetch failed');
+}
+
+async function fetchExactSlice(
+  url: string,
+  headers: Record<string, string>,
+  sliceStart: number,
+  sliceEnd: number,
+  signal: AbortSignal,
+): Promise<{ bytes: Uint8Array; discoveredTotal?: number } | null> {
+  const parts: Uint8Array[] = [];
+  let discoveredTotal: number | undefined;
+  let cursor = sliceStart;
+
+  while (cursor <= sliceEnd) {
+    const res = await fetchChunkWithRetry(url, headers, `bytes=${cursor}-${sliceEnd}`, signal, 4);
+    if (res.status === 416) {
+      await res.arrayBuffer().catch(() => undefined);
+      break;
+    }
+    if (!res.ok) {
+      await res.arrayBuffer().catch(() => undefined);
+      throw new Error(`Upstream chunk failed with HTTP ${res.status}`);
+    }
+    if (discoveredTotal === undefined && res.status === 206) {
+      discoveredTotal = parseContentRangeTotal(res.headers.get('content-range'), sliceEnd, url);
+    }
+    const buf = new Uint8Array(await res.arrayBuffer());
+    if (buf.byteLength === 0) break;
+    parts.push(buf);
+    cursor += buf.byteLength;
+    if (res.status === 200) break;
+  }
+
+  if (parts.length === 0) return null;
+  if (parts.length === 1) return { bytes: parts[0], discoveredTotal };
+
+  const merged = new Uint8Array(parts.reduce((sum, p) => sum + p.byteLength, 0));
+  let offset = 0;
+  for (const p of parts) {
+    merged.set(p, offset);
+    offset += p.byteLength;
+  }
+  return { bytes: merged, discoveredTotal };
 }
 
 /**
  * Streams `url` by walking it in ranged chunks. Falls back to a single plain
  * response if the server ignores the Range header.
  */
-async function openChunked(url: string, headers: Record<string, string>, start = 0): Promise<ChunkedSource> {
-  const firstEnd = start + CHUNK_SIZE - 1;
+async function openChunked(
+  url: string,
+  headers: Record<string, string>,
+  start = 0,
+  concurrencyOverride?: number,
+): Promise<ChunkedSource> {
+  const profile = getStreamProfile(url);
+  const concurrency = concurrencyOverride ?? profile.concurrency;
+  const firstSize = profile.paced ? PACED_INITIAL_SIZE : profile.chunkSize;
+  const firstEnd = start + firstSize - 1;
   const first = await fetchChunkWithRetry(url, headers, `bytes=${start}-${firstEnd}`);
 
   if (!first.ok || !first.body) {
@@ -79,11 +178,95 @@ async function openChunked(url: string, headers: Record<string, string>, start =
   }
 
   const firstContentRange = first.headers.get('content-range');
+  const contentType = first.headers.get('content-type') ?? undefined;
   let total =
     first.status === 206
       ? parseContentRangeTotal(firstContentRange, firstEnd, url)
       : Number(first.headers.get('content-length')) || parseClenFromUrl(url);
   const rangeSupported = first.status === 206;
+
+  if (profile.paced && rangeSupported) {
+    const firstBuf = new Uint8Array(await first.arrayBuffer());
+    let nextFetchPos = start + firstBuf.byteLength;
+    let firstEmitted = false;
+    let eofReached = firstBuf.byteLength === 0 || (total !== undefined && nextFetchPos >= total);
+    const abortController = new AbortController();
+    const inFlight: Promise<{ bytes: Uint8Array; discoveredTotal?: number } | null>[] = [];
+
+    const fillWindow = () => {
+      while (!eofReached && inFlight.length < concurrency) {
+        if (total !== undefined && nextFetchPos >= total) {
+          eofReached = true;
+          break;
+        }
+        const sliceStart = nextFetchPos;
+        const sliceEnd =
+          total !== undefined
+            ? Math.min(sliceStart + profile.chunkSize - 1, total - 1)
+            : sliceStart + profile.chunkSize - 1;
+        nextFetchPos = sliceEnd + 1;
+        const p = fetchExactSlice(url, headers, sliceStart, sliceEnd, abortController.signal).then((res) => {
+          if (!res || res.bytes.byteLength === 0) {
+            eofReached = true;
+            return null;
+          }
+          if (total === undefined && res.discoveredTotal !== undefined) {
+            total = res.discoveredTotal;
+          }
+          if (res.bytes.byteLength < sliceEnd - sliceStart + 1) {
+            eofReached = true;
+          }
+          return res;
+        });
+        // Prevent unhandled rejection before pull() awaits this slot
+        p.catch(() => undefined);
+        inFlight.push(p);
+      }
+    };
+
+    const stream = new ReadableStream<Uint8Array>({
+      async pull(controller) {
+        if (!firstEmitted) {
+          firstEmitted = true;
+          if (firstBuf.byteLength === 0) {
+            controller.close();
+            return;
+          }
+          fillWindow();
+          controller.enqueue(firstBuf);
+          if (eofReached && inFlight.length === 0) {
+            controller.close();
+          }
+          return;
+        }
+
+        fillWindow();
+        const head = inFlight.shift();
+        if (!head) {
+          controller.close();
+          return;
+        }
+        fillWindow();
+
+        try {
+          const res = await head;
+          if (!res || res.bytes.byteLength === 0) {
+            controller.close();
+            return;
+          }
+          controller.enqueue(res.bytes);
+        } catch (err) {
+          abortController.abort();
+          controller.error(err);
+        }
+      },
+      cancel() {
+        abortController.abort();
+      },
+    });
+
+    return { stream, total, contentType };
+  }
 
   let position = start;
   let chunkBytes = 0;
@@ -142,7 +325,7 @@ async function openChunked(url: string, headers: Record<string, string>, start =
     },
   });
 
-  return { stream, total, contentType: first.headers.get('content-type') ?? undefined };
+  return { stream, total, contentType };
 }
 
 function baseHeaders(resolved: ResolvedDownload): Record<string, string> {
@@ -296,30 +479,49 @@ export async function streamDownload(resolved: ResolvedDownload, request: Reques
   if (resolved.mode === 'merge') {
     const pipeInputs: ReadableStream<Uint8Array>[] = [];
     const inputArgs: string[] = [];
+    const sharedPacedHost =
+      Boolean(resolved.audioUrl) &&
+      !resolved.videoIsHls &&
+      !resolved.audioIsHls &&
+      getStreamProfile(resolved.videoUrl).paced &&
+      sameHostname(resolved.videoUrl, resolved.audioUrl!);
 
-    if (resolved.videoIsHls) {
-      const hdr = ffmpegHeaderArg(resolved.videoHeaders);
-      if (hdr) inputArgs.push('-headers', hdr);
-      inputArgs.push('-i', resolved.videoUrl);
+    if (resolved.audioUrl && !resolved.videoIsHls && !resolved.audioIsHls) {
+      const audioHeaders = resolved.audioHeaders ?? resolved.videoHeaders;
+      const [video, audio] = await Promise.all([
+        openChunked(resolved.videoUrl, resolved.videoHeaders, 0, sharedPacedHost ? 3 : undefined),
+        openChunked(resolved.audioUrl, audioHeaders, 0, sharedPacedHost ? 1 : undefined),
+      ]);
+      pipeInputs.push(video.stream, audio.stream);
+      inputArgs.push('-i', 'pipe:3', '-i', 'pipe:4');
     } else {
-      const video = await openChunked(resolved.videoUrl, resolved.videoHeaders);
-      const fd = 3 + pipeInputs.length;
-      pipeInputs.push(video.stream);
-      inputArgs.push('-i', `pipe:${fd}`);
+      if (resolved.videoIsHls) {
+        const hdr = ffmpegHeaderArg(resolved.videoHeaders);
+        if (hdr) inputArgs.push('-headers', hdr);
+        inputArgs.push('-i', resolved.videoUrl);
+      } else {
+        const video = await openChunked(resolved.videoUrl, resolved.videoHeaders);
+        const fd = 3 + pipeInputs.length;
+        pipeInputs.push(video.stream);
+        inputArgs.push('-i', `pipe:${fd}`);
+      }
+
+      if (resolved.audioUrl) {
+        const audioHeaders = resolved.audioHeaders ?? resolved.videoHeaders;
+        if (resolved.audioIsHls) {
+          const hdr = ffmpegHeaderArg(audioHeaders);
+          if (hdr) inputArgs.push('-headers', hdr);
+          inputArgs.push('-i', resolved.audioUrl);
+        } else {
+          const audio = await openChunked(resolved.audioUrl, audioHeaders);
+          const fd = 3 + pipeInputs.length;
+          pipeInputs.push(audio.stream);
+          inputArgs.push('-i', `pipe:${fd}`);
+        }
+      }
     }
 
     if (resolved.audioUrl) {
-      const audioHeaders = resolved.audioHeaders ?? resolved.videoHeaders;
-      if (resolved.audioIsHls) {
-        const hdr = ffmpegHeaderArg(audioHeaders);
-        if (hdr) inputArgs.push('-headers', hdr);
-        inputArgs.push('-i', resolved.audioUrl);
-      } else {
-        const audio = await openChunked(resolved.audioUrl, audioHeaders);
-        const fd = 3 + pipeInputs.length;
-        pipeInputs.push(audio.stream);
-        inputArgs.push('-i', `pipe:${fd}`);
-      }
 
       const args = [
         '-hide_banner',
